@@ -1,122 +1,89 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "q — Quantum Computation Simulator",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#007a9f",
+    "light": "#74d7ed",
+    "dark": "#38484e"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/2aef90ce-adda-4d91-ad4a-164e4fc88755.png",
+  "logo": {
+    "light": "https://media.brand.dev/b603d867-8e1f-427b-ad3a-4aaa28b216c7.svg",
+    "dark": "https://media.brand.dev/b603d867-8e1f-427b-ad3a-4aaa28b216c7.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/itsubaki/q"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/itsubaki/q"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "concepts"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Guides",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "guides/bell-state",
+              "guides/quantum-teleportation",
+              "guides/grovers-algorithm",
+              "guides/shors-algorithm",
+              "guides/error-correction",
+              "guides/density-matrices"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Math Utilities",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "math/matrix",
+              "math/number",
+              "math/vector"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Simulator",
             "pages": [
-              "api-reference/introduction"
+              "api/simulator",
+              "api/qubit"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Gates",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/gates-single-qubit",
+              "api/gates-multi-qubit",
+              "api/gates-custom"
+            ]
+          },
+          {
+            "group": "Quantum Channels",
+            "pages": [
+              "api/density-matrix",
+              "api/quantum-channels"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

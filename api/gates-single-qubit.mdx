@@ -1,0 +1,312 @@
+---
+title: "Single-Qubit Gates"
+description: "Standard single-qubit quantum gates available on the Q simulator and gate package."
+---
+
+<Tip>
+  All simulator gate methods accept multiple qubits: `qsim.H(q0, q1, q2)` applies H to each independently.
+</Tip>
+
+## Identity — `I`
+
+Leaves the qubit state unchanged.
+
+**Simulator**
+
+```go
+qsim.I(q0)
+```
+
+**Gate package**
+
+```go
+gate.I() *matrix.Matrix
+// Accepts an optional repetition count: gate.I(n) returns the n-fold tensor product.
+```
+
+---
+
+## Pauli-X — `X`
+
+Bit-flip gate. Maps |0⟩ → |1⟩ and |1⟩ → |0⟩. Quantum analogue of the classical NOT gate.
+
+**Matrix**
+
+```
+X = | 0  1 |
+    | 1  0 |
+```
+
+**Simulator**
+
+```go
+qsim.X(q0)
+```
+
+**Gate package**
+
+```go
+gate.X() *matrix.Matrix
+```
+
+---
+
+## Pauli-Y — `Y`
+
+Combined bit-flip and phase-flip. Maps |0⟩ → i|1⟩ and |1⟩ → -i|0⟩.
+
+**Simulator**
+
+```go
+qsim.Y(q0)
+```
+
+**Gate package**
+
+```go
+gate.Y() *matrix.Matrix
+```
+
+---
+
+## Pauli-Z — `Z`
+
+Phase-flip gate. Leaves |0⟩ unchanged and maps |1⟩ → -|1⟩.
+
+**Simulator**
+
+```go
+qsim.Z(q0)
+```
+
+**Gate package**
+
+```go
+gate.Z() *matrix.Matrix
+```
+
+---
+
+## Hadamard — `H`
+
+Creates an equal superposition from a basis state: |0⟩ → (|0⟩ + |1⟩)/√2, |1⟩ → (|0⟩ - |1⟩)/√2. Fundamental to most quantum algorithms.
+
+**Matrix**
+
+```
+H = (1/√2) | 1   1 |
+            | 1  -1 |
+```
+
+**Simulator**
+
+```go
+qsim.H(q0)
+```
+
+**Gate package**
+
+```go
+gate.H() *matrix.Matrix
+```
+
+---
+
+## S Gate — `S`
+
+Applies a π/2 (90°) phase shift to |1⟩. Equivalent to T².
+
+**Simulator**
+
+```go
+qsim.S(q0)
+```
+
+**Gate package**
+
+```go
+gate.S() *matrix.Matrix
+// Matrix: [[1, 0], [0, i]]
+```
+
+---
+
+## T Gate — `T`
+
+Applies a π/4 (45°) phase shift to |1⟩. Used in fault-tolerant gate sets.
+
+**Simulator**
+
+```go
+qsim.T(q0)
+```
+
+**Gate package**
+
+```go
+gate.T() *matrix.Matrix
+// Matrix: [[1, 0], [0, exp(iπ/4)]]
+```
+
+---
+
+## Phase Rotation — `R(theta)`
+
+Applies a phase of `exp(i·theta)` to |1⟩, leaving |0⟩ unchanged.
+
+```
+R(θ) = | 1        0       |
+       | 0  exp(i·theta)  |
+```
+
+Use `q.Theta(k)` to get the standard QFT angle `2π / 2^k`.
+
+**Simulator**
+
+```go
+qsim.R(math.Pi/4, q0)
+```
+
+**Gate package**
+
+```go
+gate.R(theta float64) *matrix.Matrix
+
+// Standard QFT angle helper:
+theta := gate.Theta(k) // 2 * math.Pi / math.Pow(2, float64(k))
+gate.R(theta)
+```
+
+---
+
+## RX — Rotation Around X Axis
+
+Rotates the Bloch sphere vector by `theta` radians around the X axis.
+
+```
+RX(θ) = | cos(θ/2)   -i·sin(θ/2) |
+        | -i·sin(θ/2)  cos(θ/2)  |
+```
+
+**Simulator**
+
+```go
+qsim.RX(math.Pi/2, q0)
+```
+
+**Gate package**
+
+```go
+gate.RX(theta float64) *matrix.Matrix
+```
+
+---
+
+## RY — Rotation Around Y Axis
+
+Rotates the Bloch sphere vector by `theta` radians around the Y axis. Produces real-valued superpositions.
+
+```
+RY(θ) = | cos(θ/2)  -sin(θ/2) |
+        | sin(θ/2)   cos(θ/2) |
+```
+
+**Simulator**
+
+```go
+qsim.RY(math.Pi/2, q0)
+```
+
+**Gate package**
+
+```go
+gate.RY(theta float64) *matrix.Matrix
+```
+
+---
+
+## RZ — Rotation Around Z Axis
+
+Rotates the Bloch sphere vector by `theta` radians around the Z axis. Applies a relative phase between |0⟩ and |1⟩.
+
+```
+RZ(θ) = | exp(-i·θ/2)       0      |
+        |      0        exp(i·θ/2) |
+```
+
+**Simulator**
+
+```go
+qsim.RZ(math.Pi/4, q0)
+```
+
+**Gate package**
+
+```go
+gate.RZ(theta float64) *matrix.Matrix
+```
+
+---
+
+## Universal Gate — `U(theta, phi, lambda)`
+
+The most general single-qubit unitary up to a global phase. Every single-qubit gate is a special case of U.
+
+```
+U(θ,φ,λ) = | cos(θ/2)              -exp(i·λ)·sin(θ/2)        |
+            | exp(i·φ)·sin(θ/2)   exp(i·(φ+λ))·cos(θ/2)      |
+```
+
+| Gate | U parameters |
+|------|-------------|
+| H    | `U(π/2, 0, π)` |
+| X    | `U(π, 0, π)` |
+| Z    | `U(0, 0, π)` |
+| S    | `U(0, 0, π/2)` |
+| T    | `U(0, 0, π/4)` |
+
+**Simulator**
+
+```go
+qsim.U(math.Pi/2, 0, math.Pi, q0) // equivalent to H
+```
+
+**Gate package**
+
+```go
+gate.U(theta, phi, lambda float64) *matrix.Matrix
+```
+
+<Accordion title="Example: Bell state via U parameters">
+
+```go
+package main
+
+import (
+    "fmt"
+    "math"
+
+    "github.com/itsubaki/q"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+func main() {
+    qsim := q.New()
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+
+    // H via U, then CNOT
+    qsim.U(math.Pi/2, 0, math.Pi, q0)
+    qsim.CNOT(q0, q1)
+
+    for _, s := range qsim.State() {
+        fmt.Println(s)
+    }
+    // [00][  0]( 0.7071 0.0000i): 0.5000
+    // [11][  3]( 0.7071 0.0000i): 0.5000
+
+    _ = gate.U(math.Pi/2, 0, math.Pi) // gate matrix directly
+}
+```
+
+</Accordion>

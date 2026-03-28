@@ -1,0 +1,181 @@
+---
+title: "Grover's Search Algorithm"
+description: "Search an unstructured database of N items in O(√N) steps using quantum amplitude amplification."
+---
+
+Grover's algorithm solves the unstructured search problem quadratically faster than any classical algorithm. Given a database of N items and a black-box oracle that recognizes the target, Grover finds the target in approximately `π/4 · √N` steps. For a classical algorithm, the expected number of queries is `N/2`.
+
+The algorithm works by repeatedly applying two operations:
+
+- **Oracle** — flips the phase of the target state, marking it with a negative amplitude
+- **Diffuser** — reflects all amplitudes about their average, amplifying the marked state
+
+After `r = ⌊π/4 · √N⌋` iterations, measuring the register yields the target with high probability.
+
+## Searching a 4-qubit register
+
+This example uses 4 qubits (N = 16 states) and searches for the state `|110⟩` in the first three qubits, treating the fourth qubit as an ancilla that is summed over.
+
+<Steps>
+  <Step title="Initialize the register in superposition">
+    Create four qubits in `|0⟩` and apply Hadamard to each. This creates a uniform superposition over all 16 basis states.
+
+    ```go
+    qsim := q.New()
+
+    // initial state
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    q2 := qsim.Zero()
+    q3 := qsim.Zero()
+
+    // superposition
+    qsim.H(q0, q1, q2, q3)
+    ```
+
+    Each of the 16 states starts with amplitude `1/√16 = 0.25` and probability `1/16 ≈ 0.0625`.
+  </Step>
+
+  <Step title="Calculate the number of iterations">
+    The optimal number of Grover iterations for N items is `r = ⌊π/4 · √N⌋`.
+
+    ```go
+    N := number.Pow(2, qsim.NumQubits())
+    r := math.Floor(math.Pi / 4 * math.Sqrt(float64(N)))
+    ```
+
+    With 4 qubits, N = 16 and `r = ⌊π · √16 / 4⌋ = ⌊π⌋ = 3`.
+  </Step>
+
+  <Step title="Apply the oracle">
+    The oracle marks the target pattern `|110⟩|x⟩` — all states where the first three qubits are `110`, regardless of `q3`. It does this by temporarily flipping `q2` and `q3`, applying a 3-controlled-NOT through `q3` (with `q3` sandwiched by Hadamards to convert it to a phase flip), then restoring `q2` and `q3`.
+
+    ```go
+    // oracle for |110>|x>
+    qsim.X(q2, q3)
+    qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+    qsim.X(q2, q3)
+    ```
+
+    The X gates on `q2` and `q3` convert the target pattern `|110⟩` into `|111⟩` so that the 3-controlled-NOT (CCCNOT) fires. The H–CCCNOT–H sequence on `q3` implements a phase flip (−1) on the `|111⟩` state. The final X gates restore the computational basis.
+  </Step>
+
+  <Step title="Apply the diffuser">
+    The diffuser reflects all amplitudes about their mean, amplifying the negative-amplitude (marked) state.
+
+    ```go
+    // diffuser
+    qsim.H(q0, q1, q2, q3)
+    qsim.X(q0, q1, q2, q3)
+    qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+    qsim.X(q0, q1, q2, q3)
+    qsim.H(q0, q1, q2, q3)
+    ```
+
+    This is the standard Grover diffuser: H transforms to the Hadamard basis, X flips all bits so `|0000⟩` becomes the target of the multi-controlled phase flip, and the final H and X restore the original basis.
+  </Step>
+
+  <Step title="Iterate and measure">
+    Wrap the oracle and diffuser in a loop for `r` iterations, then print the state grouped by the first three qubits and `q3` separately.
+
+    ```go
+    for range int(r) {
+      // oracle for |110>|x>
+      qsim.X(q2, q3)
+      qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+      qsim.X(q2, q3)
+
+      // diffuser
+      qsim.H(q0, q1, q2, q3)
+      qsim.X(q0, q1, q2, q3)
+      qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+      qsim.X(q0, q1, q2, q3)
+      qsim.H(q0, q1, q2, q3)
+    }
+
+    for _, s := range qsim.State([]q.Qubit{q0, q1, q2}, q3) {
+      fmt.Println(s)
+    }
+    ```
+
+    Output:
+
+    ```
+    // [000 0][  0   0]( 0.0508 0.0000i): 0.0026
+    // [000 1][  0   1]( 0.0508 0.0000i): 0.0026
+    // [001 0][  1   0]( 0.0508 0.0000i): 0.0026
+    // [001 1][  1   1]( 0.0508 0.0000i): 0.0026
+    // [010 0][  2   0]( 0.0508 0.0000i): 0.0026
+    // [010 1][  2   1]( 0.0508 0.0000i): 0.0026
+    // [011 0][  3   0]( 0.0508 0.0000i): 0.0026
+    // [011 1][  3   1]( 0.0508 0.0000i): 0.0026
+    // [100 0][  4   0]( 0.0508 0.0000i): 0.0026
+    // [100 1][  4   1]( 0.0508 0.0000i): 0.0026
+    // [101 0][  5   0]( 0.0508 0.0000i): 0.0026
+    // [101 1][  5   1]( 0.0508 0.0000i): 0.0026
+    // [110 0][  6   0](-0.9805 0.0000i): 0.9613 --> answer!
+    // [110 1][  6   1]( 0.0508 0.0000i): 0.0026
+    // [111 0][  7   0]( 0.0508 0.0000i): 0.0026
+    // [111 1][  7   1]( 0.0508 0.0000i): 0.0026
+    ```
+
+    The state `[110 0]` (first three qubits `110`, ancilla `0`) has probability `0.9613` — over 96%. All other states have probability `0.0026`. Measuring the first three qubits will yield `110` with 96% confidence.
+  </Step>
+</Steps>
+
+<Tip>
+  The oracle marks `|110⟩|x⟩` — all values of the ancilla qubit `q3` that pair with the pattern `110` in the first register get their amplitudes amplified together. The state `[110 0]` accumulates almost all the probability, while `[110 1]` does not, because `q3` begins in `|0⟩` and the diffuser operates on the full 4-qubit register.
+</Tip>
+
+## Complete example
+
+```go
+qsim := q.New()
+
+// initial state
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+q2 := qsim.Zero()
+q3 := qsim.Zero()
+
+// superposition
+qsim.H(q0, q1, q2, q3)
+
+// iteration
+N := number.Pow(2, qsim.NumQubits())
+r := math.Floor(math.Pi / 4 * math.Sqrt(float64(N)))
+for range int(r) {
+  // oracle for |110>|x>
+  qsim.X(q2, q3)
+  qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+  qsim.X(q2, q3)
+
+  // diffuser
+  qsim.H(q0, q1, q2, q3)
+  qsim.X(q0, q1, q2, q3)
+  qsim.H(q3).CCCNOT(q0, q1, q2, q3).H(q3)
+  qsim.X(q0, q1, q2, q3)
+  qsim.H(q0, q1, q2, q3)
+}
+
+for _, s := range qsim.State([]q.Qubit{q0, q1, q2}, q3) {
+  fmt.Println(s)
+}
+
+// [000 0][  0   0]( 0.0508 0.0000i): 0.0026
+// [000 1][  0   1]( 0.0508 0.0000i): 0.0026
+// [001 0][  1   0]( 0.0508 0.0000i): 0.0026
+// [001 1][  1   1]( 0.0508 0.0000i): 0.0026
+// [010 0][  2   0]( 0.0508 0.0000i): 0.0026
+// [010 1][  2   1]( 0.0508 0.0000i): 0.0026
+// [011 0][  3   0]( 0.0508 0.0000i): 0.0026
+// [011 1][  3   1]( 0.0508 0.0000i): 0.0026
+// [100 0][  4   0]( 0.0508 0.0000i): 0.0026
+// [100 1][  4   1]( 0.0508 0.0000i): 0.0026
+// [101 0][  5   0]( 0.0508 0.0000i): 0.0026
+// [101 1][  5   1]( 0.0508 0.0000i): 0.0026
+// [110 0][  6   0](-0.9805 0.0000i): 0.9613 --> answer!
+// [110 1][  6   1]( 0.0508 0.0000i): 0.0026
+// [111 0][  7   0]( 0.0508 0.0000i): 0.0026
+// [111 1][  7   1]( 0.0508 0.0000i): 0.0026
+```

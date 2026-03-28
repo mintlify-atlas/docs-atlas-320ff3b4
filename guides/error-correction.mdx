@@ -1,0 +1,188 @@
+---
+title: "Quantum Error Correction"
+description: "Protect a qubit against single bit-flip errors using the 3-qubit repetition code with syndrome measurement and conditional correction."
+---
+
+Quantum hardware is noisy. Gates introduce errors, and qubits decohere over time. Quantum error correction (QEC) encodes a logical qubit across multiple physical qubits so that errors on individual qubits can be detected and corrected without measuring — and thereby collapsing — the encoded state.
+
+This guide implements the **3-qubit bit-flip code**, the simplest QEC code. It protects a single logical qubit against one bit-flip error (an accidental X gate) by encoding it across three physical qubits and using two ancilla qubits for syndrome measurement.
+
+## How the code works
+
+The logical qubit `α|0⟩ + β|1⟩` is encoded as:
+
+```
+α|000⟩ + β|111⟩
+```
+
+If qubit 0 is flipped by a noise event, the state becomes `α|100⟩ + β|011⟩`. The syndrome measurements detect this without revealing `α` or `β` — they only identify which qubit flipped.
+
+## Error correction walkthrough
+
+<Steps>
+  <Step title="Create the logical qubit">
+    Allocate a qubit in the state `(0.2, 0.8)` — unnormalized amplitudes that the simulator normalizes to `0.4472|0⟩ + 0.8944|1⟩`.
+
+    ```go
+    qsim := q.New()
+
+    q0 := qsim.New(1, 2) // (0.2, 0.8)
+    ```
+
+    This is the qubit whose state we want to protect.
+  </Step>
+
+  <Step title="Encode into three physical qubits">
+    Add two ancilla qubits `q1` and `q2` in `|0⟩` and CNOT from `q0` to each. This spreads the logical state across all three qubits.
+
+    ```go
+    // encode
+    q1 := qsim.Zero()
+    q2 := qsim.Zero()
+    qsim.CNOT(q0, q1)
+    qsim.CNOT(q0, q2)
+    ```
+
+    After encoding:
+    - `α|0⟩ → α|000⟩` (CNOT copies 0 to q1 and q2)
+    - `β|1⟩ → β|111⟩` (CNOT copies 1 to q1 and q2)
+
+    The encoded state is `α|000⟩ + β|111⟩`.
+  </Step>
+
+  <Step title="Introduce a bit-flip error on q0">
+    Simulate a hardware error by applying X to `q0`. This flips the first physical qubit.
+
+    ```go
+    // error: first qubit is flipped
+    qsim.X(q0)
+    ```
+
+    The state is now `α|100⟩ + β|011⟩`.
+  </Step>
+
+  <Step title="Add syndrome measurement qubits">
+    Add two fresh ancilla qubits `q3` and `q4` in `|0⟩`. These will hold the error syndrome.
+
+    ```go
+    // add ancilla qubit
+    q3 := qsim.Zero()
+    q4 := qsim.Zero()
+    ```
+  </Step>
+
+  <Step title="Compute the error syndrome">
+    Apply CNOTs to entangle the data qubits with the syndrome qubits. The syndrome circuit compares pairs of data qubits without reading their values.
+
+    ```go
+    // error correction
+    qsim.CNOT(q0, q3)
+    qsim.CNOT(q1, q3)
+    qsim.CNOT(q1, q4)
+    qsim.CNOT(q2, q4)
+    ```
+
+    - `q3` measures the parity of `q0 XOR q1`
+    - `q4` measures the parity of `q1 XOR q2`
+
+    Measure `q3` and `q4`:
+
+    ```go
+    m3 := qsim.Measure(q3)
+    m4 := qsim.Measure(q4)
+    ```
+
+    The syndrome table is:
+
+    | m3 | m4 | Flipped qubit |
+    |----|----|---------------|
+    | 1  | 0  | q0            |
+    | 1  | 1  | q1            |
+    | 0  | 1  | q2            |
+    | 0  | 0  | no error      |
+  </Step>
+
+  <Step title="Apply conditional correction">
+    Use the syndrome bits to conditionally apply X to the flipped qubit:
+
+    ```go
+    qsim.CondX(m3.IsOne() && m4.IsZero(), q0)
+    qsim.CondX(m3.IsOne() && m4.IsOne(), q1)
+    qsim.CondX(m3.IsZero() && m4.IsOne(), q2)
+    ```
+
+    Since the error was on `q0` (`m3 = 1`, `m4 = 0`), the first `CondX` fires and flips `q0` back. The state returns to `α|000⟩ + β|111⟩`.
+  </Step>
+
+  <Step title="Decode the logical qubit">
+    Reverse the encoding CNOTs to disentangle `q0` from `q1` and `q2`.
+
+    ```go
+    // decode
+    qsim.CNOT(q0, q2)
+    qsim.CNOT(q0, q1)
+    ```
+
+    After decoding, `q0` holds the original logical state and `q1`, `q2` return to `|0⟩`.
+  </Step>
+
+  <Step title="Verify the original state is recovered">
+    Print the state of `q0` and confirm it matches the original `(0.4472, 0.8944)`.
+
+    ```go
+    for _, s := range qsim.State(q0) {
+      fmt.Println(s)
+    }
+
+    // [0][  0]( 0.4472 0.0000i): 0.2000
+    // [1][  1]( 0.8944 0.0000i): 0.8000
+    ```
+
+    The amplitudes `0.4472` and `0.8944` match the original state exactly. The bit-flip error has been corrected and the logical qubit is fully restored.
+  </Step>
+</Steps>
+
+## Complete example
+
+```go
+qsim := q.New()
+
+q0 := qsim.New(1, 2) // (0.2, 0.8)
+
+// encode
+q1 := qsim.Zero()
+q2 := qsim.Zero()
+qsim.CNOT(q0, q1)
+qsim.CNOT(q0, q2)
+
+// error: first qubit is flipped
+qsim.X(q0)
+
+// add ancilla qubit
+q3 := qsim.Zero()
+q4 := qsim.Zero()
+
+// error correction
+qsim.CNOT(q0, q3)
+qsim.CNOT(q1, q3)
+qsim.CNOT(q1, q4)
+qsim.CNOT(q2, q4)
+
+m3 := qsim.Measure(q3)
+m4 := qsim.Measure(q4)
+
+qsim.CondX(m3.IsOne() && m4.IsZero(), q0)
+qsim.CondX(m3.IsOne() && m4.IsOne(), q1)
+qsim.CondX(m3.IsZero() && m4.IsOne(), q2)
+
+// decode
+qsim.CNOT(q0, q2)
+qsim.CNOT(q0, q1)
+
+for _, s := range qsim.State(q0) {
+  fmt.Println(s)
+}
+
+// [0][  0]( 0.4472 0.0000i): 0.2000
+// [1][  1]( 0.8944 0.0000i): 0.8000
+```

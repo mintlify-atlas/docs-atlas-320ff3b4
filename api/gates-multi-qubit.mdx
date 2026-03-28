@@ -1,0 +1,284 @@
+---
+title: "Multi-Qubit Gates"
+description: "Controlled and multi-qubit gates: CNOT, CCNOT, CZ, Swap, QFT, and more."
+---
+
+## CNOT / CX — Controlled-NOT
+
+Flips the target qubit when the control qubit is |1⟩. The canonical entangling gate.
+
+**Simulator**
+
+```go
+qsim.CNOT(control, target Qubit) *Q
+qsim.CX(control, target Qubit)   *Q  // alias
+```
+
+**Gate package**
+
+```go
+// n = total number of qubits in the system, c = control index, t = target index
+gate.CNOT(n, c, t int) *matrix.Matrix
+```
+
+**Example**
+
+```go
+qsim := q.New()
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+
+qsim.H(q0)
+qsim.CNOT(q0, q1) // Bell state
+
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+// [00][  0]( 0.7071 0.0000i): 0.5000
+// [11][  3]( 0.7071 0.0000i): 0.5000
+```
+
+---
+
+## CCNOT — Toffoli Gate
+
+Flips the target qubit when **both** control qubits are |1⟩. Universal for classical reversible computation.
+
+**Simulator**
+
+```go
+qsim.CCNOT(control0, control1, target Qubit) *Q
+```
+
+**Gate package**
+
+```go
+gate.CCNOT(n, c0, c1, t int) *matrix.Matrix
+```
+
+---
+
+## CCCNOT — Four-Qubit Controlled-NOT
+
+Flips the target when all three control qubits are |1⟩.
+
+**Simulator**
+
+```go
+qsim.CCCNOT(control0, control1, control2, target Qubit) *Q
+```
+
+---
+
+## CZ / CCZ — Controlled-Z
+
+Applies a phase flip to the target when the control(s) are |1⟩.
+
+**Simulator**
+
+```go
+qsim.CZ(control, target Qubit)              *Q  // single control
+qsim.CCZ(control0, control1, target Qubit)  *Q  // two controls
+```
+
+**Gate package**
+
+```go
+gate.CZ(n, c, t int) *matrix.Matrix
+```
+
+---
+
+## CR — Controlled-R
+
+Applies the phase rotation `R(theta)` to the target qubit when the control is |1⟩. Core building block of QFT circuits.
+
+**Simulator**
+
+```go
+qsim.CR(theta float64, control, target Qubit) *Q
+```
+
+**Gate package**
+
+```go
+gate.CR(theta float64, n, c, t int) *matrix.Matrix
+```
+
+---
+
+## C — Controlled Arbitrary Gate
+
+Applies any 2×2 unitary `g` to `target` when `control` is |1⟩.
+
+**Simulator**
+
+```go
+qsim.C(g *matrix.Matrix, control, target Qubit) *Q
+```
+
+**Gate package**
+
+```go
+// Single control qubit, explicit system size
+gate.C(u *matrix.Matrix, n int, c int, t int) *matrix.Matrix
+
+// Arbitrary number of control qubits
+gate.Controlled(u *matrix.Matrix, n int, c []int, t int) *matrix.Matrix
+```
+
+---
+
+## CU — Controlled-U
+
+Applies the universal gate `U(theta, phi, lambda)` to `target` conditioned on `control`.
+
+**Simulator**
+
+```go
+qsim.CU(theta, phi, lambda float64, control, target Qubit) *Q
+```
+
+---
+
+## ControlledNot — General Multi-Control NOT
+
+Flips each qubit in `target` when **all** qubits in `control` are |1⟩. Generalises CNOT, CCNOT, and CCCNOT to arbitrary numbers of controls and targets.
+
+**Simulator**
+
+```go
+qsim.ControlledNot(control []Qubit, target []Qubit) *Q
+// Aliases:
+qsim.ControlledX(control []Qubit, target []Qubit) *Q
+```
+
+**Gate package**
+
+```go
+gate.ControlledNot(n int, c []int, t int) *matrix.Matrix
+```
+
+---
+
+## ControlledZ — General Multi-Control Z
+
+Applies a phase flip to each qubit in `target` when all `control` qubits are |1⟩.
+
+**Simulator**
+
+```go
+qsim.ControlledZ(control []Qubit, target []Qubit) *Q
+```
+
+**Gate package**
+
+```go
+gate.ControlledZ(n int, c []int, t int) *matrix.Matrix
+```
+
+---
+
+## Swap
+
+Exchanges the quantum states of two qubits. When passed more than two qubits, `Swap` reverses the sequence (i.e., swaps the outermost pair first, then works inward).
+
+**Simulator**
+
+```go
+qsim.Swap(q0, q1)            // swap two qubits
+qsim.Swap(q0, q1, q2, q3)   // swaps q0↔q3, then q1↔q2
+```
+
+**Gate package**
+
+```go
+// Returns an (2^n × 2^n) permutation matrix
+gate.Swap(n, c, t int) *matrix.Matrix
+```
+
+---
+
+## QFT — Quantum Fourier Transform
+
+Applies the quantum Fourier transform to the given qubits. Equivalent to a discrete Fourier transform on the computational-basis amplitudes. Used in phase estimation, Shor's algorithm, and period finding.
+
+**Simulator**
+
+```go
+qsim.QFT(qb ...Qubit) *Q
+```
+
+**Gate package**
+
+```go
+// Returns the full (2^n × 2^n) QFT unitary matrix for n qubits
+gate.QFT(n int) *matrix.Matrix
+```
+
+---
+
+## InvQFT — Inverse Quantum Fourier Transform
+
+Applies the inverse QFT. Converts frequency-domain amplitudes back to the computational basis. Used in the readout step of phase estimation.
+
+**Simulator**
+
+```go
+qsim.InvQFT(qb ...Qubit) *Q
+```
+
+---
+
+## TensorProduct — Gate at Specified Indices
+
+Embeds a single-qubit gate `u` into a larger n-qubit system, placing `u` at each qubit index listed in `idx` and identity on all remaining qubits.
+
+**Gate package**
+
+```go
+gate.TensorProduct(u *matrix.Matrix, n int, idx []int) *matrix.Matrix
+```
+
+**Example**
+
+```go
+// Apply H to qubits 0 and 2 in a 4-qubit system; identity on 1 and 3
+g := gate.TensorProduct(gate.H(), 4, []int{0, 2})
+```
+
+---
+
+## QFT Example: Grover's Diffuser
+
+The QFT and InvQFT are core subroutines in Shor's algorithm. Here is a minimal demonstration of applying QFT and its inverse to confirm they are inverses of each other:
+
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/itsubaki/q"
+)
+
+func main() {
+    qsim := q.New()
+
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    q2 := qsim.Zero()
+
+    // Put qubits into superposition
+    qsim.H(q0, q1, q2)
+
+    // Apply QFT then InvQFT — the result should match the superposition state
+    qsim.QFT(q0, q1, q2)
+    qsim.InvQFT(q0, q1, q2)
+
+    for _, s := range qsim.State() {
+        fmt.Println(s)
+    }
+    // All 8 basis states appear with equal amplitude 1/√8 ≈ 0.3536
+}
+```

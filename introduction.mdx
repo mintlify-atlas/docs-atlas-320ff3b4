@@ -1,0 +1,53 @@
+---
+title: "Introduction"
+description: "q is a pure Go quantum computation simulator with zero external dependencies."
+---
+
+`q` is a quantum circuit simulator written entirely in Go. It uses only the Go standard library — no C bindings, no external packages — so it compiles and runs anywhere Go does.
+
+You can allocate qubits, apply standard gates, build controlled operations, run the Quantum Fourier Transform, measure states, and model noise with density matrices and quantum channels, all through a clean chainable API.
+
+<Note>
+  `q` has **zero external dependencies**. The entire simulator is built on the Go standard library alone. Go 1.23 or later is required.
+</Note>
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="Qubit creation" icon="circle-dot">
+    Allocate qubits in the |0⟩ or |1⟩ state, or with arbitrary complex amplitudes using `qsim.New(...)`. Amplitudes are normalized automatically.
+  </Card>
+  <Card title="Standard quantum gates" icon="bolt">
+    Apply H, X, Y, Z, S, T, R, RX, RY, RZ, U, and identity gates. All single-qubit gates accept multiple qubit targets in one call.
+  </Card>
+  <Card title="Controlled operations" icon="share-nodes">
+    Use CNOT, CCNOT, CCCNOT, CZ, CR, and arbitrary controlled unitaries via `C()` and `Controlled()`. Apply gates conditionally with `CondX()` and `CondZ()`.
+  </Card>
+  <Card title="Quantum Fourier Transform" icon="wave-sine">
+    Built-in `QFT()` and `InvQFT()` operate on any subset of qubits, enabling phase estimation and Shor's algorithm.
+  </Card>
+  <Card title="Measurement" icon="ruler">
+    `Measure()` collapses the quantum state probabilistically and returns the measured value. Measure individual qubits or the full register at once.
+  </Card>
+  <Card title="Density matrices & noise" icon="triangle-exclamation">
+    Model open quantum systems using density matrix representations and quantum noise channels including bit flip, phase flip, depolarizing, and amplitude damping.
+  </Card>
+</CardGroup>
+
+## Resources
+
+| Resource | Link |
+|----------|------|
+| Go package reference | [pkg.go.dev/github.com/itsubaki/q](https://pkg.go.dev/github.com/itsubaki/q) |
+| Source code | [github.com/itsubaki/q](https://github.com/itsubaki/q) |
+| License | MIT |
+
+## Version note
+
+Versions v1.0.0 through v1.1.11 are **retracted** due to breaking compatibility changes. Always install the latest version:
+
+```bash
+go get github.com/itsubaki/q@latest
+```
+
+The `go.mod` retract directive prevents `go get` from selecting any retracted version automatically.

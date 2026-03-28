@@ -1,0 +1,365 @@
+---
+title: "Density Matrix"
+description: "Represent and manipulate mixed quantum states using the density matrix formalism."
+---
+
+A `DensityMatrix` encodes both pure and mixed quantum states as a matrix `ρ` satisfying `Tr(ρ) = 1`. It lives in the `github.com/itsubaki/q/quantum/density` package.
+
+```go
+import (
+    "github.com/itsubaki/q/quantum/density"
+    "github.com/itsubaki/q/quantum/qubit"
+)
+
+// Pure state from a single qubit
+qb := qubit.Zero()
+rho := density.From(qb)
+fmt.Println(rho.IsPure())  // true
+fmt.Println(rho.Purity())  // 1.0
+
+// Mixed state from a classical ensemble
+states := []density.WeightedState{
+    {Probability: 0.5, Qubit: qubit.Zero()},
+    {Probability: 0.5, Qubit: qubit.One()},
+}
+mixed := density.FromStates(states)
+fmt.Println(mixed.IsMixed()) // true
+```
+
+---
+
+## WeightedState
+
+`WeightedState` pairs a qubit with a classical probability, forming one term in a mixed ensemble.
+
+```go
+type WeightedState struct {
+    Probability float64
+    Qubit       *qubit.Qubit
+}
+```
+
+<ParamField path="body.Probability" type="float64" required>
+  Classical probability of this state in the ensemble. Must be non-negative. The sum across all states in the ensemble must equal 1.0.
+</ParamField>
+
+<ParamField path="body.Qubit" type="*qubit.Qubit" required>
+  The quantum state associated with this weight. All qubits in an ensemble must have the same dimension.
+</ParamField>
+
+---
+
+## Constructors
+
+### `From`
+
+```go
+func From(qb *qubit.Qubit) *DensityMatrix
+```
+
+Returns a pure-state density matrix `ρ = |ψ⟩⟨ψ|` from a single qubit. Equivalent to calling `FromStates` with a single entry at probability 1.0.
+
+```go
+rho := density.From(qubit.Zero())
+```
+
+### `FromStates`
+
+```go
+func FromStates(states []WeightedState) *DensityMatrix
+```
+
+Returns a density matrix constructed from a classical mixture of states:
+
+```
+ρ = Σᵢ pᵢ |ψᵢ⟩⟨ψᵢ|
+```
+
+All qubits must share the same dimension. Probabilities are used as-is; use `Normalize` first if they do not already sum to 1.
+
+```go
+states := []density.WeightedState{
+    {Probability: 0.7, Qubit: qubit.Zero()},
+    {Probability: 0.3, Qubit: qubit.One()},
+}
+rho := density.FromStates(states)
+```
+
+### `Normalize`
+
+```go
+func Normalize(states []WeightedState) []WeightedState
+```
+
+Returns a new slice of `WeightedState` with probabilities rescaled so they sum to 1. The original slice is not modified.
+
+```go
+raw := []density.WeightedState{
+    {Probability: 2, Qubit: qubit.Zero()},
+    {Probability: 8, Qubit: qubit.One()},
+}
+normalized := density.Normalize(raw) // probabilities become 0.2, 0.8
+```
+
+### `IsValid`
+
+```go
+func IsValid(states []WeightedState, tol ...float64) bool
+```
+
+Reports whether a slice of `WeightedState` is suitable for constructing a density matrix. Returns `false` if any of the following hold:
+
+- The slice is empty.
+- Qubits have inconsistent dimensions.
+- Any probability is negative.
+- Probabilities do not sum to 1 (within optional tolerance `tol`).
+
+```go
+ok := density.IsValid(states)           // default tolerance
+ok  = density.IsValid(states, 1e-10)    // custom tolerance
+```
+
+---
+
+## Properties
+
+### `At`
+
+```go
+func (m *DensityMatrix) At(i, j int) complex128
+```
+
+Returns the matrix element `ρᵢⱼ` at row `i`, column `j` (0-based).
+
+### `Matrix`
+
+```go
+func (m *DensityMatrix) Matrix() *matrix.Matrix
+```
+
+Returns the underlying `*matrix.Matrix`. Useful when you need to pass the raw matrix to other parts of the library (e.g., `gate.TensorProduct`).
+
+### `Dim`
+
+```go
+func (m *DensityMatrix) Dim() (rows, cols int)
+```
+
+Returns the number of rows and columns. For an `n`-qubit system the matrix is `2ⁿ × 2ⁿ`.
+
+### `NumQubits`
+
+```go
+func (m *DensityMatrix) NumQubits() int
+```
+
+Returns `n` such that `Dim() == (2ⁿ, 2ⁿ)`.
+
+### `Trace`
+
+```go
+func (m *DensityMatrix) Trace() float64
+```
+
+Returns `Tr(ρ)`. For a valid density matrix this is always 1.0.
+
+### `Purity`
+
+```go
+func (m *DensityMatrix) Purity() float64
+```
+
+Returns `Tr(ρ²)`. A value of 1 indicates a pure state; values less than 1 indicate a mixed state. For an `n`-qubit maximally mixed state the purity equals `1 / 2ⁿ`.
+
+### `IsPure`
+
+```go
+func (m *DensityMatrix) IsPure(tol ...float64) bool
+```
+
+Reports whether `Purity() ≈ 1` within optional tolerance `tol`.
+
+### `IsMixed`
+
+```go
+func (m *DensityMatrix) IsMixed(tol ...float64) bool
+```
+
+Reports whether `IsPure()` is false — i.e., whether the state is a non-trivial mixture.
+
+### `IsHermitian`
+
+```go
+func (m *DensityMatrix) IsHermitian(tol ...float64) bool
+```
+
+Reports whether `ρ = ρ†` within optional tolerance `tol`. Every valid density matrix is Hermitian.
+
+### `Probability`
+
+```go
+func (m *DensityMatrix) Probability(q *qubit.Qubit) float64
+```
+
+Returns `Tr(ρ |q⟩⟨q|)` — the probability that a measurement in the computational basis yields the state `q`.
+
+```go
+p := rho.Probability(qubit.Zero()) // prob of measuring |0⟩
+```
+
+### `ExpectedValue`
+
+```go
+func (m *DensityMatrix) ExpectedValue(u *matrix.Matrix) float64
+```
+
+Returns `Tr(ρ U)` — the expectation value of the observable `U` in state `ρ`.
+
+```go
+ev := rho.ExpectedValue(gate.Z()) // ⟨Z⟩ in state ρ
+```
+
+### `Seq2`
+
+```go
+func (m *DensityMatrix) Seq2() iter.Seq2[int, []complex128]
+```
+
+Returns a Go 1.23 range iterator over the rows of the density matrix. Each iteration yields a row index and the corresponding row of `complex128` values.
+
+```go
+for i, row := range rho.Seq2() {
+    fmt.Println(i, row)
+}
+```
+
+---
+
+## Operations
+
+### `Apply`
+
+```go
+func (m *DensityMatrix) Apply(u *matrix.Matrix) *DensityMatrix
+```
+
+Applies a unitary transformation: `ρ' = U ρ U†`. Returns a new `DensityMatrix`; the receiver is not modified.
+
+```go
+rho2 := rho.Apply(gate.H()) // apply Hadamard (single-qubit system)
+```
+
+### `ApplyChannel`
+
+```go
+func (m *DensityMatrix) ApplyChannel(channel ...*Channel) *DensityMatrix
+```
+
+Applies one or more pre-built `*Channel` values sequentially. Each channel is expanded from its Kraus operators against the current number of qubits. Returns a new `DensityMatrix`.
+
+### `ApplyChannelFunc`
+
+```go
+func (m *DensityMatrix) ApplyChannelFunc(channel ...ChannelFunc) *DensityMatrix
+```
+
+Applies one or more `ChannelFunc` values. Each function receives the qubit count `n` and returns a `*Channel`, which is then applied via `ApplyChannel`. This is the preferred high-level API for the built-in noise channels.
+
+```go
+noisy := rho.ApplyChannelFunc(
+    density.BitFlip(0.1, 0),
+    density.PhaseFlip(0.05, 0),
+)
+```
+
+### `ApplyKraus`
+
+```go
+func (m *DensityMatrix) ApplyKraus(ops ...*matrix.Matrix) *DensityMatrix
+```
+
+Applies a set of Kraus operators directly: `ρ' = Σᵢ Kᵢ ρ Kᵢ†`. Returns a new `DensityMatrix`. Use this when you have hand-crafted operator matrices.
+
+```go
+// Custom Kraus operators
+rho2 := rho.ApplyKraus(k0, k1)
+```
+
+### `PartialTrace` / `TraceOut`
+
+```go
+func (m *DensityMatrix) PartialTrace(qb ...int) *DensityMatrix
+func (m *DensityMatrix) TraceOut(qb ...int)    *DensityMatrix
+```
+
+Traces out the specified qubit indices (0-based), returning the reduced density matrix of the remaining subsystem. `TraceOut` is an alias for `PartialTrace`.
+
+The length of `qb` must be at most `NumQubits() - 1`; you cannot trace out all qubits.
+
+```go
+// 2-qubit Bell state — trace out qubit 1 to get the reduced state of qubit 0
+bell := density.From(qubit.From("00").H(0).CX(0, 1))
+rho0 := bell.PartialTrace(1)  // reduced state for qubit 0
+```
+
+<Note>
+Qubit indices are 0-based, ordered from most significant to least significant bit, matching the rest of the `itsubaki/q` API.
+</Note>
+
+### `TensorProduct`
+
+```go
+func (m *DensityMatrix) TensorProduct(n *DensityMatrix) *DensityMatrix
+```
+
+Returns `ρ ⊗ σ` — the tensor product of two density matrices, representing a composite system with no entanglement between the two subsystems.
+
+```go
+rhoAB := rhoA.TensorProduct(rhoB)
+```
+
+### `Project`
+
+```go
+func (m *DensityMatrix) Project(q *qubit.Qubit, tol ...float64) (float64, *DensityMatrix)
+```
+
+Performs a projective measurement onto `|q⟩`. Returns:
+
+1. `p float64` — the probability of obtaining outcome `q`.
+2. `*DensityMatrix` — the post-measurement state `(|q⟩⟨q| ρ |q⟩⟨q|) / p`.
+
+If `p` is zero (within `tol`) the returned matrix is all-zeros.
+
+```go
+p, post := rho.Project(qubit.Zero())
+fmt.Printf("prob=%.3f\n", p)
+fmt.Println(post.IsPure()) // true after projection
+```
+
+### `Clone`
+
+```go
+func (m *DensityMatrix) Clone() *DensityMatrix
+```
+
+Returns a deep copy of the density matrix. The clone shares no underlying data with the original.
+
+---
+
+## Convenience channel methods
+
+`DensityMatrix` exposes thin wrappers around `ApplyChannelFunc` for every built-in channel. Each returns a new `*DensityMatrix`; the receiver is not modified.
+
+| Method | Delegates to |
+|---|---|
+| `BitFlip(p float64, qb int)` | `density.BitFlip` |
+| `PhaseFlip(p float64, qb int)` | `density.PhaseFlip` |
+| `BitPhaseFlip(p float64, qb int)` | `density.BitPhaseFlip` |
+| `Depolarizing(p float64, qb int)` | `density.Depolarizing` |
+| `AmplitudeDamping(gamma float64, qb int)` | `density.AmplitudeDamping` |
+| `PhaseDamping(gamma float64, qb int)` | `density.PhaseDamping` |
+| `Pauli(px, py, pz float64, qb int)` | `density.Pauli` |
+| `Flip(p float64, u *matrix.Matrix, qb int)` | `density.Flip` |
+
+See the [Quantum Channels](/api/quantum-channels) reference for parameter semantics and Kraus operator details.

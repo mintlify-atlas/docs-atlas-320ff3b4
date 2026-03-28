@@ -1,0 +1,205 @@
+---
+title: "Custom Gates"
+description: "Define arbitrary unitary gates and apply them to the simulator."
+---
+
+<Note>
+  The U gate is universal — any single-qubit gate can be expressed as U(theta, phi, lambda).
+</Note>
+
+## gate.U — Universal Parameterization
+
+The standard way to construct any single-qubit gate. The matrix is:
+
+```
+U(θ,φ,λ) = | cos(θ/2)              -exp(i·λ)·sin(θ/2)      |
+            | exp(i·φ)·sin(θ/2)   exp(i·(φ+λ))·cos(θ/2)    |
+```
+
+```go
+import (
+    "math"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+h := gate.U(math.Pi/2, 0, math.Pi) // Hadamard
+x := gate.U(math.Pi, 0, math.Pi)   // Pauli-X
+z := gate.U(0, 0, math.Pi)         // Pauli-Z
+s := gate.U(0, 0, math.Pi/2)       // S gate
+t := gate.U(0, 0, math.Pi/4)       // T gate
+```
+
+---
+
+## gate.New — Define a Matrix Directly
+
+Constructs a gate from explicit complex128 row vectors. Use this when your gate cannot be expressed cleanly through parameterization.
+
+```go
+import "github.com/itsubaki/q/quantum/gate"
+
+// Pauli-X built by hand
+x := gate.New(
+    []complex128{0, 1},
+    []complex128{1, 0},
+)
+
+// Custom 2×2 phase gate
+phi := math.Pi / 3
+custom := gate.New(
+    []complex128{1, 0},
+    []complex128{0, complex(math.Cos(phi), math.Sin(phi))},
+)
+```
+
+The returned value is a `*matrix.Matrix`. There is no size restriction imposed by `gate.New` itself, but the simulator's single-qubit methods (`G`, `C`) expect a 2×2 matrix.
+
+---
+
+## gate.SU — Special Unitary
+
+Returns a gate with determinant +1 (no global phase). Useful when the global phase matters, e.g., when building controlled operations where the global phase of the sub-gate becomes a relative phase.
+
+```go
+import (
+    "math"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+// Special unitary equivalent of H (global phase removed)
+su := gate.SU(math.Pi/2, 0, math.Pi)
+```
+
+`gate.SU(theta, phi, lambda)` multiplies `gate.U(theta, phi, lambda)` by `exp(-i·(phi+lambda)/2)`.
+
+---
+
+## gate.ABC — ABC Decomposition
+
+Decomposes U(theta, phi, lambda) into four components: a global phase `alpha` and three 2×2 matrices A, B, C satisfying:
+
+- A·B·C = I
+- exp(i·alpha)·A·X·B·X·C = U(theta, phi, lambda)
+
+This decomposition is used to construct controlled-U from single-qubit gates and CNOTs without requiring a direct controlled implementation.
+
+```go
+import (
+    "math"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+alpha, A, B, C := gate.ABC(math.Pi/2, 0, math.Pi)
+// alpha: global phase
+// A, B, C: *matrix.Matrix satisfying the decomposition identity
+```
+
+---
+
+## qsim.G — Apply Arbitrary Gate via Simulator
+
+Applies any 2×2 `*matrix.Matrix` to one or more qubits. Each qubit in the list receives the gate independently.
+
+```go
+func (q *Q) G(g *matrix.Matrix, qb ...Qubit) *Q
+```
+
+```go
+import (
+    "math"
+    "github.com/itsubaki/q"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+qsim := q.New()
+q0 := qsim.Zero()
+
+// Apply a custom 45° rotation around Y
+ry45 := gate.RY(math.Pi / 4)
+qsim.G(ry45, q0)
+```
+
+---
+
+## qsim.C — Controlled Arbitrary Gate
+
+Applies a controlled version of `g`: `g` is applied to `target` when `control` is |1⟩.
+
+```go
+func (q *Q) C(g *matrix.Matrix, control, target Qubit) *Q
+```
+
+For multiple control qubits, use `qsim.Controlled`:
+
+```go
+func (q *Q) Controlled(g *matrix.Matrix, control, target []Qubit) *Q
+```
+
+---
+
+## qsim.Cond — Conditional Gate Application
+
+Applies `g` to the listed qubits only if `condition` is `true`. Has no effect when `condition` is `false`. Useful for classically-controlled corrections in teleportation and error correction.
+
+```go
+func (q *Q) Cond(condition bool, g *matrix.Matrix, qb ...Qubit) *Q
+```
+
+```go
+m := qsim.Measure(q0)
+
+// Apply X correction only if the measurement result is |1⟩
+qsim.Cond(m.IsOne(), gate.X(), q1)
+```
+
+<Tip>
+  `qsim.CondX(condition, qb...)` and `qsim.CondZ(condition, qb...)` are dedicated shortcuts for the common X and Z classical corrections.
+</Tip>
+
+---
+
+## Full Example: Bell State via Custom U Gates
+
+This is the exact example from the library README — constructing H and X through `gate.U` and entangling two qubits.
+
+```go
+package main
+
+import (
+    "fmt"
+    "math"
+
+    "github.com/itsubaki/q"
+    "github.com/itsubaki/q/quantum/gate"
+)
+
+func main() {
+    h := gate.U(math.Pi/2, 0, math.Pi)
+    x := gate.U(math.Pi, 0, math.Pi)
+
+    qsim := q.New()
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+
+    qsim.G(h, q0)    // apply custom H to q0
+    qsim.C(x, q0, q1) // apply controlled-X (CNOT) with custom X gate
+
+    for _, s := range qsim.State() {
+        fmt.Println(s)
+    }
+
+    // [00][  0]( 0.7071 0.0000i): 0.5000
+    // [11][  3]( 0.7071 0.0000i): 0.5000
+}
+```
+
+<Accordion title="Why use gate.U instead of qsim.H / qsim.CNOT?">
+
+The built-in methods like `qsim.H` and `qsim.CNOT` are convenience wrappers. Using `gate.U` + `qsim.G` / `qsim.C` is preferred when:
+
+- You need to parameterize the gate at runtime (e.g., variational quantum algorithms).
+- You want to pass the same gate object to multiple simulator instances.
+- You are building a gate from a decomposition (e.g., `gate.ABC`) and applying its pieces individually.
+- You need to apply the controlled version of a gate that has no dedicated simulator method.
+
+</Accordion>

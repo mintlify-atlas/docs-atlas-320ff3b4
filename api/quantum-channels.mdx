@@ -1,0 +1,378 @@
+---
+title: "Quantum Channels"
+description: "Noise and decoherence models via quantum channels and Kraus operators."
+---
+
+Quantum channels model noise and decoherence as completely positive trace-preserving (CPTP) maps on density matrices. All channel types live in `github.com/itsubaki/q/quantum/density`.
+
+<Accordion title="What are Kraus operators?">
+A quantum channel `ε` acting on density matrix `ρ` is written as:
+
+```
+ε(ρ) = Σᵢ Kᵢ ρ Kᵢ†
+```
+
+The matrices `{Kᵢ}` are called **Kraus operators**. They must satisfy the completeness relation:
+
+```
+Σᵢ Kᵢ† Kᵢ = I
+```
+
+This constraint guarantees that the channel is trace-preserving (probabilities stay normalised) and completely positive (the output is always a valid density matrix, even when the system is entangled with an environment). Each built-in channel in this package has its Kraus operators pre-computed. You can also supply your own via `NewChannel` or `ApplyKraus`.
+</Accordion>
+
+<Note>
+The `qb int` parameter specifies which qubit index (0-based) the channel acts on within an n-qubit system.
+</Note>
+
+---
+
+## Channel type
+
+### `Channel`
+
+```go
+type Channel struct {
+    Kraus []*matrix.Matrix
+}
+```
+
+A `Channel` holds the Kraus operators for a single quantum channel. When applied to a density matrix, each operator `Kᵢ` is embedded into the full `2ⁿ × 2ⁿ` space via a tensor product before use.
+
+### `NewChannel`
+
+```go
+func NewChannel(kraus ...*matrix.Matrix) *Channel
+```
+
+Returns a new `Channel` from the provided Kraus operators. Use this to assemble a custom channel from hand-crafted matrices.
+
+```go
+k0 := matrix.New(
+    []complex128{1, 0},
+    []complex128{0, cmplx.Sqrt(1 - gamma)},
+)
+k1 := matrix.New(
+    []complex128{0, cmplx.Sqrt(gamma)},
+    []complex128{0, 0},
+)
+ch := density.NewChannel(k0, k1)
+rho2 := rho.ApplyChannel(ch)
+```
+
+### `ChannelFunc`
+
+```go
+type ChannelFunc func(n int) *Channel
+```
+
+A `ChannelFunc` is a factory that receives the total qubit count `n` of the target density matrix and returns a `*Channel` with Kraus operators expanded to the full `2ⁿ × 2ⁿ` space. All built-in channel constructors return a `ChannelFunc`. Pass one or more to `DensityMatrix.ApplyChannelFunc`.
+
+---
+
+## Built-in channels
+
+### `BitFlip`
+
+```go
+func BitFlip(p float64, qb int) ChannelFunc
+```
+
+Models an X (bit-flip) error on qubit `qb` with probability `p`. With probability `1-p` the qubit is left unchanged; with probability `p` the Pauli X gate is applied, swapping `|0⟩ ↔ |1⟩`.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-p) I,   K₁ = √p X
+```
+
+<ParamField path="body.p" type="float64" required>
+  Bit-flip probability. Must satisfy `0 ≤ p ≤ 1`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+// 10% chance of a bit-flip on qubit 0
+noisy := rho.BitFlip(0.1, 0)
+
+// or equivalently
+noisy = rho.ApplyChannelFunc(density.BitFlip(0.1, 0))
+```
+
+---
+
+### `PhaseFlip`
+
+```go
+func PhaseFlip(p float64, qb int) ChannelFunc
+```
+
+Models a Z (phase-flip) error on qubit `qb` with probability `p`. The phase of the `|1⟩` component is flipped, leaving `|0⟩` unchanged.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-p) I,   K₁ = √p Z
+```
+
+<ParamField path="body.p" type="float64" required>
+  Phase-flip probability. Must satisfy `0 ≤ p ≤ 1`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+noisy := rho.PhaseFlip(0.05, 0)
+```
+
+---
+
+### `BitPhaseFlip`
+
+```go
+func BitPhaseFlip(p float64, qb int) ChannelFunc
+```
+
+Models a Y error on qubit `qb` with probability `p`. A Y gate combines a bit-flip and a phase-flip simultaneously.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-p) I,   K₁ = √p Y
+```
+
+<ParamField path="body.p" type="float64" required>
+  Bit-phase-flip probability. Must satisfy `0 ≤ p ≤ 1`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+noisy := rho.BitPhaseFlip(0.05, 0)
+```
+
+---
+
+### `Depolarizing`
+
+```go
+func Depolarizing(p float64, qb int) ChannelFunc
+```
+
+Models uniform, symmetric noise. With probability `1-p` the qubit is undisturbed; with probability `p` one of X, Y, or Z is applied with equal likelihood `p/3` each. This is equivalent to `Pauli(p/3, p/3, p/3, qb)`.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-p)   I
+K₁ = √(p/3)   X
+K₂ = √(p/3)   Y
+K₃ = √(p/3)   Z
+```
+
+<ParamField path="body.p" type="float64" required>
+  Total depolarizing probability. Must satisfy `0 ≤ p ≤ 1`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+noisy := rho.Depolarizing(0.05, 0)
+```
+
+<Tip>
+Depolarizing noise is the most common benchmark for error thresholds in quantum error-correction codes. A fully depolarized qubit (`p = 1`) is equivalent to the maximally mixed state `I/2`.
+</Tip>
+
+---
+
+### `AmplitudeDamping`
+
+```go
+func AmplitudeDamping(gamma float64, qb int) ChannelFunc
+```
+
+Models energy dissipation (T₁ relaxation): the excited state `|1⟩` decays to the ground state `|0⟩` with probability `gamma`. This is the quantum analogue of spontaneous emission.
+
+**Kraus operators:**
+
+```
+K₀ = [[1,         0        ],
+       [0,  √(1-gamma)     ]]
+
+K₁ = [[0,  √gamma          ],
+       [0,         0        ]]
+```
+
+<ParamField path="body.gamma" type="float64" required>
+  Decay probability (damping parameter). Must satisfy `0 ≤ gamma ≤ 1`. At `gamma = 0` the channel is the identity; at `gamma = 1` the qubit always relaxes to `|0⟩`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+// Model T1 decay with 1% probability per step
+noisy := rho.AmplitudeDamping(0.01, 0)
+```
+
+---
+
+### `PhaseDamping`
+
+```go
+func PhaseDamping(gamma float64, qb int) ChannelFunc
+```
+
+Models pure dephasing (T₂ dephasing without energy loss): off-diagonal coherences of the density matrix decay while populations are preserved. This describes elastic scattering or background electromagnetic fluctuations.
+
+**Kraus operators:**
+
+```
+K₀ = [[1,         0        ],
+       [0,  √(1-gamma)     ]]
+
+K₁ = [[0,         0        ],
+       [0,  √gamma          ]]
+```
+
+<ParamField path="body.gamma" type="float64" required>
+  Dephasing probability. Must satisfy `0 ≤ gamma ≤ 1`. At `gamma = 1` all coherences vanish and the qubit becomes a classical mixture.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+noisy := rho.PhaseDamping(0.02, 0)
+```
+
+<Note>
+`AmplitudeDamping` and `PhaseDamping` share the same `K₀` operator but differ in `K₁`. Amplitude damping has an off-diagonal `K₁` that transfers population; phase damping has a diagonal `K₁` that only affects coherences.
+</Note>
+
+---
+
+### `Pauli`
+
+```go
+func Pauli(px, py, pz float64, qb int) ChannelFunc
+```
+
+General Pauli channel: applies X, Y, or Z with independent probabilities `px`, `py`, `pz`. The identity is applied with probability `1 - px - py - pz`. `Depolarizing` is a special case with `px = py = pz = p/3`.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-px-py-pz) I
+K₁ = √px            X
+K₂ = √py            Y
+K₃ = √pz            Z
+```
+
+<ParamField path="body.px" type="float64" required>
+  Probability of an X error.
+</ParamField>
+
+<ParamField path="body.py" type="float64" required>
+  Probability of a Y error.
+</ParamField>
+
+<ParamField path="body.pz" type="float64" required>
+  Probability of a Z error. The sum `px + py + pz` must satisfy `0 ≤ px + py + pz ≤ 1`.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+// Asymmetric noise: X errors twice as likely as Z, no Y
+noisy := rho.ApplyChannelFunc(density.Pauli(0.04, 0.0, 0.02, 0))
+```
+
+---
+
+### `Flip`
+
+```go
+func Flip(p float64, u *matrix.Matrix, qb int) ChannelFunc
+```
+
+Generic flip channel: with probability `1-p` the qubit is unchanged; with probability `p` the arbitrary unitary `u` is applied. `BitFlip`, `PhaseFlip`, and `BitPhaseFlip` are all built on top of `Flip`.
+
+**Kraus operators:**
+
+```
+K₀ = √(1-p) I,   K₁ = √p U
+```
+
+<ParamField path="body.p" type="float64" required>
+  Flip probability. Must satisfy `0 ≤ p ≤ 1`.
+</ParamField>
+
+<ParamField path="body.u" type="*matrix.Matrix" required>
+  The unitary applied on a flip event. Must be a 2×2 unitary matrix.
+</ParamField>
+
+<ParamField path="body.qb" type="int" required>
+  Target qubit index (0-based).
+</ParamField>
+
+```go
+// Equivalent to BitFlip(0.1, 0)
+noisy := rho.ApplyChannelFunc(density.Flip(0.1, gate.X(), 0))
+```
+
+---
+
+## Applying channels
+
+There are two ways to apply channels to a `DensityMatrix`.
+
+### Via convenience methods (single channel)
+
+Each built-in channel has a matching method on `*DensityMatrix` that applies it directly and returns a new `*DensityMatrix`:
+
+```go
+noisy := rho.BitFlip(0.1, 0)
+noisy  = rho.Depolarizing(0.05, 0)
+noisy  = rho.AmplitudeDamping(0.01, 0)
+noisy  = rho.PhaseDamping(0.02, 0)
+noisy  = rho.PhaseFlip(0.05, 0)
+noisy  = rho.BitPhaseFlip(0.03, 0)
+noisy  = rho.Pauli(0.02, 0.01, 0.02, 0)
+```
+
+### Via `ApplyChannelFunc` (chainable, multiple channels)
+
+Pass multiple `ChannelFunc` values to apply them sequentially in a single call:
+
+```go
+noisy := rho.ApplyChannelFunc(
+    density.BitFlip(0.1, 0),
+    density.PhaseFlip(0.05, 0),
+)
+```
+
+You can also mix and match with `ApplyChannel` (which takes `*Channel` values directly) and `ApplyKraus` (which takes raw `*matrix.Matrix` operators):
+
+```go
+// Build a channel manually, then apply it alongside a built-in
+ch := density.NewChannel(k0, k1)
+
+noisy := rho.
+    ApplyChannel(ch).
+    ApplyChannelFunc(density.Depolarizing(0.03, 0))
+```

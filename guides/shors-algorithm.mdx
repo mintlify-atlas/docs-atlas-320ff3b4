@@ -1,0 +1,219 @@
+---
+title: "Shor's Factoring Algorithm"
+description: "Factor large integers exponentially faster than classical algorithms using quantum phase estimation and the quantum Fourier transform."
+---
+
+Shor's algorithm factors an integer N in polynomial time on a quantum computer, compared to the best known classical algorithms which run in sub-exponential but super-polynomial time. It works by reducing the factoring problem to finding the period of a modular exponentiation function, which quantum phase estimation solves efficiently.
+
+The high-level structure is:
+
+1. Choose a random integer `a` coprime to `N`
+2. Use a quantum circuit to estimate the period `r` of `f(x) = aˣ mod N`
+3. Use `r` to compute `gcd(a^(r/2) ± 1, N)`, which gives the prime factors
+
+<Note>
+  The algorithm is probabilistic. The period-finding step may yield a trivial result (r is odd, or the GCD gives 1 or N). The outer loop retries with a new run until a valid factorization is found.
+</Note>
+
+## Factoring N = 15 with a = 7
+
+<Steps>
+  <Step title="Choose N and a">
+    Set `N = 15` and `a = 7`. The value `a` must be coprime to `N` (i.e., `gcd(a, N) = 1`). Since `gcd(7, 15) = 1`, this is valid.
+
+    ```go
+    N := 15
+    a := 7 // co-prime
+    ```
+  </Step>
+
+  <Step title="Prepare quantum registers">
+    Allocate the two quantum registers. The first register (`q0`, `q1`, `q2`) holds the phase estimate — three qubits for three bits of precision. The second register (`q3`–`q6`) holds the modular exponentiation result and is initialized to `|1⟩` by setting `q6` to `|1⟩`.
+
+    ```go
+    qsim := q.New()
+
+    // initial state
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    q2 := qsim.Zero()
+
+    q3 := qsim.Zero()
+    q4 := qsim.Zero()
+    q5 := qsim.Zero()
+    q6 := qsim.One()
+    ```
+  </Step>
+
+  <Step title="Apply superposition to the first register">
+    Hadamard on all three qubits of the first register creates a uniform superposition over `|0⟩` through `|7⟩`.
+
+    ```go
+    // superposition
+    qsim.H(q0, q1, q2)
+    ```
+  </Step>
+
+  <Step title="Apply Controlled-U operations (modular exponentiation)">
+    This is the quantum oracle for `f(x) = 7ˣ mod 15`. Each qubit in the first register controls a different power of `a`. The circuit implements `Controlled-U^(2^0)` through `Controlled-U^(2^2)` using CNOT and Toffoli gates.
+
+    ```go
+    // Controlled-U
+    qsim.CNOT(q2, q4)
+    qsim.CNOT(q2, q5)
+
+    // Controlled-U^2
+    qsim.CNOT(q3, q5)
+    qsim.CCNOT(q1, q5, q3)
+    qsim.CNOT(q3, q5)
+
+    qsim.CNOT(q6, q4)
+    qsim.CCNOT(q1, q4, q6)
+    qsim.CNOT(q6, q4)
+    ```
+
+    After this step the two registers are entangled: the second register holds `a^x mod N` conditioned on the value `x` in the first register.
+  </Step>
+
+  <Step title="Apply inverse QFT">
+    The inverse Quantum Fourier Transform converts the periodic structure in the first register into a phase estimate. A bit-reversal swap precedes `InvQFT` to match the expected qubit ordering.
+
+    ```go
+    // inverse QFT
+    qsim.Swap(q0, q2)
+    qsim.InvQFT(q0, q1, q2)
+    ```
+  </Step>
+
+  <Step title="Measure the first register to obtain a phase estimate">
+    Measuring `q0`, `q1`, `q2` yields a binary fraction `0.m` that approximates `s/r` for some integer `s`. The function `number.Ldexp` converts the integer value of the measurement into a floating-point fraction.
+
+    ```go
+    // measure q0, q1, q2
+    m := qsim.Measure(q0, q1, q2)
+    phi := number.Ldexp(m.Int(), -m.NumQubits())
+    ```
+
+    For example, measuring `010` gives integer `2`, so `phi = 2 / 2³ = 0.25`, which represents the fraction `1/4`.
+  </Step>
+
+  <Step title="Recover the period r using continued fractions">
+    `number.FindOrder` applies the continued fraction algorithm to `phi` to find the best rational approximation `s/r` such that `a^r ≡ 1 (mod N)`.
+
+    ```go
+    // find s/r. 0.010 -> 0.25 -> 1/4, 0.110 -> 0.75 -> 3/4, ...
+    s, r, d, ok := number.FindOrder(a, N, phi)
+    if !ok || number.IsOdd(r) {
+      continue
+    }
+    ```
+
+    - `s` — numerator of the best rational approximation
+    - `r` — denominator (the period)
+    - `d` — the actual decimal value of `s/r`
+    - `ok` — whether a valid period was found
+
+    If `r` is odd the algorithm cannot proceed; the loop retries.
+  </Step>
+
+  <Step title="Compute GCD to find the prime factors">
+    With period `r` in hand, compute `gcd(a^(r/2) - 1, N)` and `gcd(a^(r/2) + 1, N)`. These give the two prime factors of N, unless the result is trivial (1 or N).
+
+    ```go
+    // gcd(a^(r/2)-1, N), gcd(a^(r/2)+1, N)
+    p0 := number.GCD(number.Pow(a, r/2)-1, N)
+    p1 := number.GCD(number.Pow(a, r/2)+1, N)
+    if number.IsTrivial(N, p0, p1) {
+      continue
+    }
+
+    // result
+    fmt.Printf("i=%d: N=%d, a=%d. p=%v, q=%v. s/r=%d/%d ([0.%v]~%.3f)\n", i, N, a, p0, p1, s, r, m, d)
+    ```
+
+    `number.IsTrivial(N, p0, p1)` returns `true` when either factor is 1 or N, meaning no useful factorization was found.
+  </Step>
+</Steps>
+
+## Example output
+
+The algorithm is run up to 10 times in a loop. A successful run produces:
+
+```
+i=2: N=15, a=7. p=3, q=5. s/r=1/4 ([0.010]~0.250)
+```
+
+This reads: on iteration `i=2`, factoring `N=15` with `a=7` succeeded. The factors are `p=3` and `q=5`. The measurement was `010` (binary), representing the fraction `0.010₂ = 0.250`, which is the rational approximation `s/r = 1/4`. The period `r = 4` satisfies `7⁴ mod 15 = 1`.
+
+## Helper functions
+
+| Function | Description |
+|---|---|
+| `number.FindOrder(a, N, phi)` | Applies continued fractions to `phi` and verifies `a^r mod N = 1`. Returns `s, r, d, ok`. |
+| `number.GCD(x, N)` | Greatest common divisor. Used to extract prime factors from `a^(r/2) ± 1`. |
+| `number.IsTrivial(N, p0, p1)` | Returns `true` if either `p0` or `p1` is 1 or N — indicating a trivial and unusable factorization. |
+| `number.IsOdd(r)` | Returns `true` if the period is odd. An odd period cannot be used in the GCD step. |
+| `number.Ldexp(m, exp)` | Computes `m * 2^exp`. Used to convert a measurement integer to a floating-point fraction. |
+
+## Complete example
+
+```go
+N := 15
+a := 7 // co-prime
+
+for i := range 10 {
+  qsim := q.New()
+
+  // initial state
+  q0 := qsim.Zero()
+  q1 := qsim.Zero()
+  q2 := qsim.Zero()
+
+  q3 := qsim.Zero()
+  q4 := qsim.Zero()
+  q5 := qsim.Zero()
+  q6 := qsim.One()
+
+  // superposition
+  qsim.H(q0, q1, q2)
+
+  // Controlled-U
+  qsim.CNOT(q2, q4)
+  qsim.CNOT(q2, q5)
+
+  // Controlled-U^2
+  qsim.CNOT(q3, q5)
+  qsim.CCNOT(q1, q5, q3)
+  qsim.CNOT(q3, q5)
+
+  qsim.CNOT(q6, q4)
+  qsim.CCNOT(q1, q4, q6)
+  qsim.CNOT(q6, q4)
+
+  // inverse QFT
+  qsim.Swap(q0, q2)
+  qsim.InvQFT(q0, q1, q2)
+
+  // measure q0, q1, q2
+  m := qsim.Measure(q0, q1, q2)
+  phi := number.Ldexp(m.Int(), -m.NumQubits())
+
+  // find s/r. 0.010 -> 0.25 -> 1/4, 0.110 -> 0.75 -> 3/4, ...
+  s, r, d, ok := number.FindOrder(a, N, phi)
+  if !ok || number.IsOdd(r) {
+    continue
+  }
+
+  // gcd(a^(r/2)-1, N), gcd(a^(r/2)+1, N)
+  p0 := number.GCD(number.Pow(a, r/2)-1, N)
+  p1 := number.GCD(number.Pow(a, r/2)+1, N)
+  if number.IsTrivial(N, p0, p1) {
+    continue
+  }
+
+  // result
+  fmt.Printf("i=%d: N=%d, a=%d. p=%v, q=%v. s/r=%d/%d ([0.%v]~%.3f)\n", i, N, a, p0, p1, s, r, m, d)
+}
+
+// i=2: N=15, a=7. p=3, q=5. s/r=1/4 ([0.010]~0.250)
+```

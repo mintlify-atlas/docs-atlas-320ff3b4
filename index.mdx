@@ -1,97 +1,79 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "q — Quantum Computation Simulator"
+description: "A pure Go library for simulating quantum circuits and algorithms. No external dependencies required."
 ---
 
-## Setting up
+Simulate quantum computation in Go with a clean, chainable API. Build circuits from individual qubits and gates, run canonical quantum algorithms, and study quantum noise and error correction — all using only the Go standard library.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the library and run your first quantum circuit in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Core Concepts" icon="atom" href="/concepts">
+    Understand qubits, gates, superposition, entanglement, and measurement.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Algorithm Guides" icon="diagram-project" href="/guides/bell-state">
+    Step-by-step walkthroughs of Bell states, teleportation, Grover, and Shor.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/simulator">
+    Complete reference for the simulator, gates, qubits, and quantum channels.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Get started in three steps
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Install the package">
+    Add `q` to your Go module.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    ```bash
+    go get github.com/itsubaki/q
+    ```
+  </Step>
+  <Step title="Create a simulator and qubits">
+    Instantiate the simulator and allocate qubits in the |0⟩ state.
 
-## Need inspiration?
+    ```go
+    import "github.com/itsubaki/q"
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    qsim := q.New()
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    ```
+  </Step>
+  <Step title="Apply gates and measure">
+    Build a Bell state with a Hadamard and CNOT gate, then read the output.
+
+    ```go
+    qsim.H(q0)
+    qsim.CNOT(q0, q1)
+
+    for _, s := range qsim.State() {
+        fmt.Println(s)
+    }
+    // [00][  0]( 0.7071 0.0000i): 0.5000
+    // [11][  3]( 0.7071 0.0000i): 0.5000
+    ```
+  </Step>
+</Steps>
+
+## What you can simulate
+
+<CardGroup cols={2}>
+  <Card title="Standard quantum gates" icon="bolt">
+    H, X, Y, Z, S, T, R, RX, RY, RZ, and the universal U gate — all with multi-qubit support.
+  </Card>
+  <Card title="Controlled operations" icon="share-nodes">
+    CNOT, CCNOT, CCCNOT, CZ, CR, and arbitrary controlled unitaries via `C()` and `Controlled()`.
+  </Card>
+  <Card title="Quantum Fourier Transform" icon="wave-sine">
+    Built-in `QFT` and `InvQFT` for use in phase estimation and factoring algorithms.
+  </Card>
+  <Card title="Density matrices & noise" icon="triangle-exclamation">
+    Model open quantum systems with bit flip, phase flip, depolarizing, and amplitude damping channels.
+  </Card>
+</CardGroup>
+
+<Note>
+  `q` requires Go 1.23 or later and has **zero external dependencies** — it relies exclusively on the Go standard library.
+</Note>

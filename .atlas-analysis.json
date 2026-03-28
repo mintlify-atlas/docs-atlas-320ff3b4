@@ -1,0 +1,124 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "q — Quantum Computation Simulator",
+  "projectDescription": "A pure Go library for simulating quantum circuits and algorithms, including qubits, gates, measurement, density matrices, and canonical quantum algorithms.",
+  "theme": "luma",
+  "primaryColor": "#ffffff",
+  "lightColor": "#74d7ed",
+  "darkColor": "#38484e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/bell-state",
+              "guides/quantum-teleportation",
+              "guides/grovers-algorithm",
+              "guides/shors-algorithm",
+              "guides/error-correction",
+              "guides/density-matrices"
+            ]
+          },
+          {
+            "group": "Math Utilities",
+            "pages": [
+              "math/matrix",
+              "math/number",
+              "math/vector"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Simulator",
+            "pages": [
+              "api/simulator",
+              "api/qubit"
+            ]
+          },
+          {
+            "group": "Gates",
+            "pages": [
+              "api/gates-single-qubit",
+              "api/gates-multi-qubit",
+              "api/gates-custom"
+            ]
+          },
+          {
+            "group": "Quantum Channels",
+            "pages": [
+              "api/density-matrix",
+              "api/quantum-channels"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Pure Go implementation with no external dependencies",
+    "Fluent chainable API for building quantum circuits",
+    "Full set of standard quantum gates (H, X, Y, Z, S, T, CNOT, CCNOT, Swap, QFT, etc.)",
+    "Arbitrary single-qubit unitary gate U(theta, phi, lambda) and controlled variants",
+    "Density matrix formalism for mixed states and open quantum systems",
+    "Quantum noise channels: BitFlip, PhaseFlip, Depolarizing, AmplitudeDamping, PhaseDamping",
+    "Measurement with probabilistic collapse and state inspection",
+    "Built-in implementations of Grover search, Shor factoring, and quantum teleportation",
+    "Math utilities: matrix algebra, number-theoretic functions (GCD, modular exponentiation, continued fractions), vectors"
+  ],
+  "publicApiSurface": [
+    "q.New() *Q",
+    "(*Q).Zero() Qubit",
+    "(*Q).One() Qubit",
+    "(*Q).New(v ...complex128) Qubit",
+    "(*Q).H(qb ...Qubit) *Q",
+    "(*Q).X(qb ...Qubit) *Q",
+    "(*Q).Y(qb ...Qubit) *Q",
+    "(*Q).Z(qb ...Qubit) *Q",
+    "(*Q).S(qb ...Qubit) *Q",
+    "(*Q).T(qb ...Qubit) *Q",
+    "(*Q).R(theta float64, qb ...Qubit) *Q",
+    "(*Q).RX/RY/RZ(theta float64, qb ...Qubit) *Q",
+    "(*Q).U(theta, phi, lambda float64, qb ...Qubit) *Q",
+    "(*Q).CNOT(control, target Qubit) *Q",
+    "(*Q).CCNOT(control0, control1, target Qubit) *Q",
+    "(*Q).CZ(control, target Qubit) *Q",
+    "(*Q).Swap(qb ...Qubit) *Q",
+    "(*Q).QFT(qb ...Qubit) *Q",
+    "(*Q).InvQFT(qb ...Qubit) *Q",
+    "(*Q).Measure(qb ...Qubit) *qubit.Qubit",
+    "(*Q).State(reg ...any) []qubit.State",
+    "(*Q).G(g *matrix.Matrix, qb ...Qubit) *Q",
+    "(*Q).C(g *matrix.Matrix, control, target Qubit) *Q",
+    "(*Q).CondX(condition bool, qb ...Qubit) *Q",
+    "(*Q).CondZ(condition bool, qb ...Qubit) *Q",
+    "(*Q).Clone() *Q",
+    "q.Top(s []qubit.State, n int) []qubit.State",
+    "gate.U(theta, phi, lambda float64) *matrix.Matrix",
+    "gate.H/X/Y/Z/S/T/R/RX/RY/RZ(...) *matrix.Matrix",
+    "gate.CNOT/CCNOT/CZ/Swap/QFT(n int, ...) *matrix.Matrix",
+    "gate.Controlled(u *matrix.Matrix, n int, c []int, t int) *matrix.Matrix",
+    "density.From(qb *qubit.Qubit) *DensityMatrix",
+    "density.FromStates(states []WeightedState) *DensityMatrix",
+    "(*DensityMatrix).ApplyChannelFunc(channel ...ChannelFunc) *DensityMatrix",
+    "(*DensityMatrix).PartialTrace(qb ...int) *DensityMatrix",
+    "density.BitFlip/PhaseFlip/Depolarizing/AmplitudeDamping/PhaseDamping(p float64, qb int) ChannelFunc",
+    "number.GCD(a, b int) int",
+    "number.FindOrder(a, N int, m float64) (int, int, float64, bool)",
+    "number.ModExp(a, r, N int) int"
+  ]
+}

@@ -1,0 +1,320 @@
+---
+title: "Number theory"
+description: "Number-theoretic utilities used in quantum algorithms like Shor's factoring."
+---
+
+The `number` package provides arithmetic helpers used throughout the `q` simulator — particularly in Shor's factoring algorithm, where period finding, modular exponentiation, and GCD computations are core steps.
+
+**Import path**
+
+```go
+import "github.com/itsubaki/q/math/number"
+```
+
+## Integer arithmetic
+
+### `GCD`
+
+```go
+func GCD(a, b int) int
+```
+
+Returns the greatest common divisor of `a` and `b` using Euclid's algorithm.
+
+```go
+number.GCD(12, 8) // 4
+```
+
+### `Pow`
+
+```go
+func Pow(a, r int) int
+```
+
+Returns `a**r` using exponentiation by squaring. Returns `0` if `a` is zero, `1` if `r` is zero.
+
+```go
+number.Pow(7, 4) // 2401
+```
+
+### `BaseExp`
+
+```go
+func BaseExp(N int) (int, int, bool)
+```
+
+Returns `a` and `b` such that `a**b == N`. If `N` is not a perfect power, returns `(0, 0, false)`.
+
+```go
+a, b, ok := number.BaseExp(27) // a=3, b=3, ok=true
+```
+
+### `Log2`
+
+```go
+func Log2(N int) int
+```
+
+Returns the integer part of the base-2 logarithm of `N` (i.e. the bit length minus one).
+
+```go
+number.Log2(8)  // 3
+number.Log2(15) // 3
+```
+
+### `IsPowOf2`
+
+```go
+func IsPowOf2(N int) bool
+```
+
+Returns `true` if `N` is a positive power of two.
+
+### `IsOdd` / `IsEven`
+
+```go
+func IsOdd(v int) bool
+func IsEven(v int) bool
+```
+
+Parity checks.
+
+```go
+number.IsOdd(7)  // true
+number.IsEven(4) // true
+```
+
+### `IsPrime`
+
+```go
+func IsPrime(N int) bool
+```
+
+Returns `true` if `N` is prime. Uses trial division up to `√N`.
+
+```go
+number.IsPrime(13) // true
+number.IsPrime(15) // false
+```
+
+### `IsTrivial`
+
+```go
+func IsTrivial(N int, factor ...int) bool
+```
+
+Returns `true` if none of the supplied factors is a non-trivial factor of `N` — i.e. every factor is either `1`, `N`, or does not divide `N` evenly. Used in Shor's algorithm to discard attempts that only yield trivial factors.
+
+```go
+number.IsTrivial(15, 3, 5) // false — 3 and 5 are real factors
+number.IsTrivial(15, 1, 15) // true — both are trivial
+```
+
+## Modular arithmetic
+
+### `ModExp`
+
+```go
+func ModExp(a, r, N int) int
+```
+
+Returns `a**r mod N` using exponentiation by squaring. Returns `0` when `a == 0` or `N == 1`.
+
+```go
+number.ModExp(7, 4, 15) // 1
+```
+
+### `ModExp2`
+
+```go
+func ModExp2(a, j, N int) int
+```
+
+Returns `a**(2**j) mod N`. Equivalent to squaring `a mod N` exactly `j` times. Used when building the controlled-U² unitaries in Shor's circuit.
+
+```go
+number.ModExp2(7, 2, 15) // 7^4 mod 15 = 1
+```
+
+## Period finding
+
+These three functions work together. After measuring the quantum register in Shor's algorithm you get a rational approximation `m` to `s/r`. You convert it to a continued fraction, then step through its convergents until you find a denominator `r` that satisfies `a**r ≡ 1 (mod N)`.
+
+### `ContinuedFraction`
+
+```go
+func ContinuedFraction(real float64, tol ...float64) []int
+```
+
+Returns the continued-fraction expansion of `real` as a slice of integer coefficients. Expansion stops when the fractional part is within tolerance of zero.
+
+```go
+number.ContinuedFraction(0.25) // [0, 4]
+number.ContinuedFraction(0.75) // [0, 1, 3]
+```
+
+### `Convergent`
+
+```go
+func Convergent(cfx []int) (int, int, float64)
+```
+
+Returns the numerator `p`, denominator `q`, and floating-point value `p/q` of the convergent for the given prefix of a continued-fraction expansion.
+
+```go
+cf := number.ContinuedFraction(0.25)
+p, q, d := number.Convergent(cf) // p=1, q=4, d=0.25
+```
+
+### `FindOrder`
+
+```go
+func FindOrder(a, N int, m float64, tol ...float64) (int, int, float64, bool)
+```
+
+Finds the period `r` of `a mod N` from the measured phase `m`. Internally it steps through the convergents of `ContinuedFraction(m)` and returns the first `s/r` such that `ModExp(a, r, N) == 1`.
+
+Returns `(s, r, d, true)` on success, or the last convergent and `false` if no valid `r` is found.
+
+```go
+s, r, d, ok := number.FindOrder(7, 15, 0.25)
+// s=1, r=4, d=0.25, ok=true
+```
+
+### `Ldexp`
+
+```go
+func Ldexp(a, b int) float64
+```
+
+Returns `a * 2**b` as a `float64`. In Shor's algorithm this converts the integer measurement result into the phase `φ = m / 2^n`:
+
+```go
+phi := number.Ldexp(m.Int(), -m.NumQubits())
+```
+
+## Helpers
+
+### `Sum`
+
+```go
+func Sum(p []float64) float64
+```
+
+Returns the sum of all values in `p`. Useful for verifying that a probability distribution sums to 1.
+
+```go
+probs := []float64{0.25, 0.25, 0.25, 0.25}
+number.Sum(probs) // 1.0
+```
+
+### `MustParseInt`
+
+```go
+func MustParseInt(binary string) int
+```
+
+Parses a binary string and returns the corresponding integer. Panics on invalid input.
+
+```go
+number.MustParseInt("1010") // 10
+```
+
+### `Must`
+
+```go
+func Must[T any](v T, err error) T
+```
+
+Returns `v` if `err` is nil, otherwise panics. A generic helper for wrapping functions that return `(T, error)`.
+
+```go
+v := number.Must(strconv.Atoi("42")) // 42
+```
+
+## Shor's factoring algorithm
+
+The functions above combine to implement the classical post-processing step of Shor's algorithm. The full circuit and classical steps are shown below.
+
+```go
+N := 15
+a := 7 // co-prime to N
+
+for i := range 10 {
+    qsim := q.New()
+
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    q2 := qsim.Zero()
+
+    q3 := qsim.Zero()
+    q4 := qsim.Zero()
+    q5 := qsim.Zero()
+    q6 := qsim.One()
+
+    // superposition
+    qsim.H(q0, q1, q2)
+
+    // Controlled-U
+    qsim.CNOT(q2, q4)
+    qsim.CNOT(q2, q5)
+
+    // Controlled-U^2
+    qsim.CNOT(q3, q5)
+    qsim.CCNOT(q1, q5, q3)
+    qsim.CNOT(q3, q5)
+
+    qsim.CNOT(q6, q4)
+    qsim.CCNOT(q1, q4, q6)
+    qsim.CNOT(q6, q4)
+
+    // inverse QFT
+    qsim.Swap(q0, q2)
+    qsim.InvQFT(q0, q1, q2)
+
+    // measure q0, q1, q2
+    m := qsim.Measure(q0, q1, q2)
+    phi := number.Ldexp(m.Int(), -m.NumQubits())
+
+    // find s/r from the measured phase
+    s, r, d, ok := number.FindOrder(a, N, phi)
+    if !ok || number.IsOdd(r) {
+        continue
+    }
+
+    // compute candidate factors
+    p0 := number.GCD(number.Pow(a, r/2)-1, N)
+    p1 := number.GCD(number.Pow(a, r/2)+1, N)
+    if number.IsTrivial(N, p0, p1) {
+        continue
+    }
+
+    fmt.Printf("i=%d: N=%d, a=%d. p=%v, q=%v. s/r=%d/%d ([0.%v]~%.3f)\n",
+        i, N, a, p0, p1, s, r, m, d)
+}
+
+// i=2: N=15, a=7. p=3, q=5. s/r=1/4 ([0.010]~0.250)
+```
+
+<Tip>
+  The algorithm is probabilistic. Wrap the loop with a retry count and check both `!ok` and `IsOdd(r)` before using the result. A measurement of `0` gives `phi = 0`, which `FindOrder` cannot resolve — `continue` in that case.
+</Tip>
+
+<AccordionGroup>
+  <Accordion title="Why continued fractions?">
+    The quantum phase estimation step outputs an integer `m` such that `m/2^n ≈ s/r` for some integers `s` and `r`. The continued-fraction algorithm efficiently finds the best rational approximation to a real number with a small denominator, recovering `r` without an exhaustive search.
+
+    `ContinuedFraction` expands the phase into coefficients `[a₀; a₁, a₂, ...]`, and `Convergent` evaluates successive truncations of that expansion. The first truncation whose denominator satisfies `a^r ≡ 1 (mod N)` gives the period.
+  </Accordion>
+
+  <Accordion title="Choosing a co-prime">
+    Pick `a` such that `1 < a < N` and `GCD(a, N) == 1`. If `GCD(a, N) > 1` you have already found a factor without needing the quantum step.
+
+    ```go
+    a := 7
+    if g := number.GCD(a, N); g > 1 {
+        fmt.Println("found factor:", g)
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

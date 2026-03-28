@@ -1,0 +1,478 @@
+---
+title: "Matrix"
+description: "Complex matrix type used as the foundation for all quantum gates and unitary transformations in the q simulator."
+---
+
+The `matrix` package provides the `Matrix` type — a dense complex128 matrix used throughout `q` to represent quantum gates. Every gate in the `gate` package returns a `*matrix.Matrix`, and the simulator applies it to the state vector under the hood.
+
+<Note>
+  `matrix.Matrix` is the fundamental building block for all quantum gates. When you call `qsim.H(q0)`, the simulator constructs the Hadamard matrix internally and applies it to the state vector. You only need to work with this package directly when building custom gates.
+</Note>
+
+**Import path**
+
+```go
+import "github.com/itsubaki/q/math/matrix"
+```
+
+## Creating matrices
+
+### `New`
+
+```go
+func New(z ...[]complex128) *Matrix
+```
+
+Creates a matrix from row slices. Each argument is one row. The number of columns is inferred from the first row.
+
+```go
+// 2x2 identity
+m := matrix.New(
+    []complex128{1, 0},
+    []complex128{0, 1},
+)
+
+// Pauli-X gate
+x := matrix.New(
+    []complex128{0, 1},
+    []complex128{1, 0},
+)
+```
+
+### `Zero`
+
+```go
+func Zero(rows, cols int) *Matrix
+```
+
+Returns a zero matrix of the given dimensions. All elements are `0+0i`.
+
+```go
+m := matrix.Zero(4, 4) // 4x4 zero matrix
+```
+
+### `ZeroLike`
+
+```go
+func ZeroLike(m *Matrix) *Matrix
+```
+
+Returns a zero matrix with the same dimensions as `m`. Useful when building a result matrix in a loop.
+
+### `Identity`
+
+```go
+func Identity(size int) *Matrix
+```
+
+Returns a `size×size` identity matrix.
+
+```go
+i2 := matrix.Identity(2) // 2x2 identity
+i4 := matrix.Identity(4) // 4x4 identity (two-qubit identity)
+```
+
+## Element access
+
+### `At`
+
+```go
+func (m *Matrix) At(i, j int) complex128
+```
+
+Returns the element at row `i`, column `j` (zero-indexed).
+
+```go
+val := m.At(0, 1) // top-right element
+```
+
+### `Row`
+
+```go
+func (m *Matrix) Row(i int) []complex128
+```
+
+Returns row `i` as a slice. The slice shares the underlying array with the matrix.
+
+### `Set`
+
+```go
+func (m *Matrix) Set(i, j int, z complex128)
+```
+
+Sets the element at `(i, j)` to `z`.
+
+### `AddAt`, `SubAt`, `MulAt`, `DivAt`
+
+```go
+func (m *Matrix) AddAt(i, j int, z complex128)
+func (m *Matrix) SubAt(i, j int, z complex128)
+func (m *Matrix) MulAt(i, j int, z complex128)
+func (m *Matrix) DivAt(i, j int, z complex128)
+```
+
+In-place element-wise arithmetic at position `(i, j)`.
+
+### `Dim`
+
+```go
+func (m *Matrix) Dim() (rows int, cols int)
+```
+
+Returns the number of rows and columns.
+
+```go
+rows, cols := m.Dim()
+```
+
+### `Seq2`
+
+```go
+func (m *Matrix) Seq2() iter.Seq2[int, []complex128]
+```
+
+Returns an iterator over `(index, row)` pairs, suitable for use with `range` in Go 1.23+.
+
+```go
+for i, row := range m.Seq2() {
+    fmt.Println(i, row)
+}
+```
+
+## Arithmetic
+
+### `MatMul` (method)
+
+```go
+func (m *Matrix) MatMul(n *Matrix) *Matrix
+```
+
+Returns the matrix product `m × n`. For two n×n matrices this is the standard matrix multiplication.
+
+```go
+ab := a.MatMul(b) // AB
+```
+
+### `Apply` (method)
+
+```go
+// A.Apply(B) computes BA
+func (m *Matrix) Apply(n *Matrix) *Matrix
+```
+
+Returns `n × m`. The ordering is intentionally reversed so you can chain gate applications in the natural left-to-right reading order:
+
+```go
+// Compute X·H·Z applied to a gate m
+result := m.Apply(z).Apply(h).Apply(x)
+```
+
+### `Mul`
+
+```go
+func (m *Matrix) Mul(z complex128) *Matrix
+```
+
+Scalar multiplication: returns `z × m`.
+
+```go
+scaled := m.Mul(0.5 + 0i)
+```
+
+### `Add`, `Sub`
+
+```go
+func (m *Matrix) Add(n *Matrix) *Matrix
+func (m *Matrix) Sub(n *Matrix) *Matrix
+```
+
+Element-wise addition and subtraction.
+
+## Package-level functions
+
+### `MatMul`
+
+```go
+func MatMul(m ...*Matrix) *Matrix
+```
+
+Multiplies any number of matrices left to right: `MatMul(A, B, C)` computes `A·B·C`.
+
+```go
+abc := matrix.MatMul(a, b, c)
+```
+
+### `Apply`
+
+```go
+func Apply(m ...*Matrix) *Matrix
+```
+
+Applies matrices in sequence. `Apply(A, B, C)` computes `C·B·A` — equivalent to applying `A` first, then `B`, then `C`.
+
+```go
+// Apply Z, then H, then X
+result := matrix.Apply(z, h, x) // X·H·Z
+```
+
+### `ApplyN`
+
+```go
+func ApplyN(m *Matrix, n int) *Matrix
+```
+
+Applies `m` to itself `n` times. If `n` is 0, returns the identity matrix.
+
+```go
+x3 := matrix.ApplyN(x, 3) // X·X·X
+```
+
+## Tensor product
+
+### `TensorProduct` (method)
+
+```go
+func (m *Matrix) TensorProduct(n *Matrix) *Matrix
+```
+
+Computes the Kronecker (tensor) product of `m` and `n`. For an `a×b` matrix and a `c×d` matrix, the result is `(a·c)×(b·d)`.
+
+```go
+// H ⊗ H: 4x4 two-qubit Hadamard
+hh := h.TensorProduct(h)
+```
+
+### `TensorProduct` (package-level)
+
+```go
+func TensorProduct(m ...*Matrix) *Matrix
+```
+
+Computes the tensor product of a variadic list of matrices left to right.
+
+```go
+// H ⊗ I ⊗ H
+hih := matrix.TensorProduct(h, i2, h)
+```
+
+### `TensorProductN`
+
+```go
+func TensorProductN(m *Matrix, n ...int) *Matrix
+```
+
+Computes `m ⊗ m ⊗ ... ⊗ m` (`n` times). If `n` is omitted, returns `m` unchanged.
+
+```go
+// H ⊗ H ⊗ H (three-qubit Hadamard)
+h3 := matrix.TensorProductN(h, 3)
+```
+
+## Transformations
+
+### `Transpose`
+
+```go
+func (m *Matrix) Transpose() *Matrix
+```
+
+Returns the transpose of `m`.
+
+### `Conjugate`
+
+```go
+func (m *Matrix) Conjugate() *Matrix
+```
+
+Returns the element-wise complex conjugate of `m`.
+
+### `Dagger`
+
+```go
+func (m *Matrix) Dagger() *Matrix
+```
+
+Returns the conjugate transpose (Hermitian adjoint) of `m`, also written `m†`. For a unitary gate `U`, `U.Dagger()` is its inverse.
+
+```go
+// Verify U is unitary: U†U = I
+dag := u.Dagger()
+product := u.MatMul(dag)
+fmt.Println(product.IsIdentity()) // true
+```
+
+### `Inverse`
+
+```go
+func (m *Matrix) Inverse(tol ...float64) *Matrix
+```
+
+Returns the inverse of `m` computed via Gauss-Jordan elimination. For unitary matrices, `Dagger()` is equivalent and faster.
+
+### `Swap`
+
+```go
+func (m *Matrix) Swap(i, j int) *Matrix
+```
+
+Returns a new matrix with rows `i` and `j` swapped. Used internally by `Inverse`.
+
+### `Clone`
+
+```go
+func (m *Matrix) Clone() *Matrix
+```
+
+Returns a deep copy of `m`. Modifying the clone does not affect the original.
+
+## Properties
+
+### `IsSquare`
+
+```go
+func (m *Matrix) IsSquare() bool
+```
+
+Returns `true` if the matrix has equal rows and columns.
+
+### `IsIdentity`
+
+```go
+func (m *Matrix) IsIdentity(tol ...float64) bool
+```
+
+Returns `true` if `m` is a square identity matrix, within tolerance.
+
+### `IsHermitian`
+
+```go
+func (m *Matrix) IsHermitian(tol ...float64) bool
+```
+
+Returns `true` if `m == m†` (self-adjoint). Hermitian matrices have real eigenvalues, making them suitable as quantum observables.
+
+```go
+// Pauli-Z is Hermitian
+z := matrix.New(
+    []complex128{1, 0},
+    []complex128{0, -1},
+)
+fmt.Println(z.IsHermitian()) // true
+```
+
+### `IsUnitary`
+
+```go
+func (m *Matrix) IsUnitary(tol ...float64) bool
+```
+
+Returns `true` if `m·m† = I`. All valid quantum gates are unitary.
+
+```go
+fmt.Println(h.IsUnitary()) // true
+```
+
+### `Equal`
+
+```go
+func (m *Matrix) Equal(n *Matrix, tol ...float64) bool
+```
+
+Returns `true` if `m` and `n` have the same dimensions and all elements are within tolerance. Default tolerances come from the `epsilon` package (`AbsTol = 1e-8`, `RelTol = 1e-5`).
+
+### `Trace`
+
+```go
+func (m *Matrix) Trace() complex128
+```
+
+Returns the sum of the diagonal elements.
+
+```go
+tr := m.Trace()
+fmt.Println(real(tr)) // real part of trace
+```
+
+## Decomposition helpers
+
+### `Real`, `Imag`
+
+```go
+func (m *Matrix) Real() [][]float64
+func (m *Matrix) Imag() [][]float64
+```
+
+Returns the real or imaginary parts of all elements as a `[][]float64`.
+
+## Commutators
+
+### `Commutator`
+
+```go
+func Commutator(m, n *Matrix) *Matrix
+```
+
+Returns `[m, n] = m·n - n·m`.
+
+### `AntiCommutator`
+
+```go
+func AntiCommutator(m, n *Matrix) *Matrix
+```
+
+Returns `{m, n} = m·n + n·m`.
+
+## Building custom gates
+
+Use `matrix.New` to define any unitary as a gate. Pass it to the simulator via `qsim.G()`:
+
+```go
+import (
+    "math"
+    "github.com/itsubaki/q"
+    "github.com/itsubaki/q/math/matrix"
+)
+
+// Custom phase gate: e^(iπ/4) on |1⟩
+s := matrix.New(
+    []complex128{1, 0},
+    []complex128{0, complex(math.Cos(math.Pi/4), math.Sin(math.Pi/4))},
+)
+
+qsim := q.New()
+q0 := qsim.Zero()
+qsim.H(q0)
+qsim.G(s, q0) // apply custom gate
+```
+
+<Tip>
+  Verify a custom gate is valid before using it in a simulation: call `m.IsUnitary()`. A non-unitary matrix will produce physically incorrect results.
+</Tip>
+
+<AccordionGroup>
+  <Accordion title="Tensor product for multi-qubit gates">
+    To apply a single-qubit gate to one qubit in an n-qubit register while leaving the others unchanged, tensor the gate with identity matrices:
+
+    ```go
+    // Apply H to q1 in a 3-qubit register: I ⊗ H ⊗ I
+    i2 := matrix.Identity(2)
+    h  := gate.H()
+
+    h_on_q1 := matrix.TensorProduct(i2, h, i2)
+    ```
+
+    The simulator's high-level gate methods do this automatically. Use `TensorProduct` directly only when constructing composite gates manually.
+  </Accordion>
+
+  <Accordion title="Apply vs MatMul ordering">
+    The two multiplication helpers have opposite argument order:
+
+    | Call | Result |
+    |------|--------|
+    | `matrix.MatMul(A, B, C)` | `A·B·C` |
+    | `matrix.Apply(A, B, C)` | `C·B·A` |
+
+    `MatMul` follows standard mathematical matrix multiplication order.
+    `Apply` follows the circuit diagram reading order: `A` is applied first, `C` last.
+  </Accordion>
+</AccordionGroup>

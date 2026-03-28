@@ -1,0 +1,242 @@
+---
+title: "Density Matrices and Quantum Noise"
+description: "Model mixed quantum states and open-system noise using density matrices and Kraus operator channels."
+---
+
+A **density matrix** (or density operator) `ρ` is a generalization of the state vector that can represent both pure states and mixed states. It is essential for:
+
+- Describing **statistical mixtures** of quantum states (when preparation is uncertain)
+- Modeling **open quantum systems** where a qubit interacts with an environment
+- Computing the state of a **subsystem** of a larger entangled system
+
+The density matrix of a pure state `|ψ⟩` is `ρ = |ψ⟩⟨ψ|`. A mixed state is a probabilistic combination of pure states: `ρ = Σᵢ pᵢ |ψᵢ⟩⟨ψᵢ|`.
+
+The `github.com/itsubaki/q/quantum/density` package provides `DensityMatrix` along with a library of standard quantum noise channels.
+
+## Creating a density matrix
+
+### From a pure state
+
+Use `density.From(qb)` to construct a density matrix from a single `*qubit.Qubit`. This is equivalent to `density.FromStates` with a single state of probability 1.
+
+```go
+import (
+    "github.com/itsubaki/q/quantum/density"
+    "github.com/itsubaki/q/quantum/qubit"
+)
+
+// pure state |0>
+rho := density.From(qubit.Zero())
+
+fmt.Printf("pure : %.2f, %v\n", rho.Purity(), rho.IsPure())
+// pure : 1.00, true
+```
+
+You can also build a density matrix directly from a simulator's qubit state:
+
+```go
+qsim := q.New()
+qb := qsim.Zeros(2)
+qsim.H(qb[0])
+qsim.CNOT(qb[0], qb[1])
+
+rho := density.From(qsim.Qubit())
+
+fmt.Printf("trace: %.2v, purity: %.2v\n", rho.Trace(), rho.Purity())
+// trace: 1, purity: 1
+```
+
+### From a mixed state
+
+Use `density.FromStates([]density.WeightedState{...})` to construct a density matrix from a statistical ensemble. Each `WeightedState` holds a probability and a `*qubit.Qubit`. Probabilities must sum to 1.
+
+```go
+rho := density.FromStates([]density.WeightedState{
+    {0.1, qubit.Zero()},
+    {0.9, qubit.One()},
+})
+
+for i, row := range rho.Matrix().Seq2() {
+    fmt.Println(i, row)
+}
+// [(0.1+0i) (0+0i)]
+// [(0+0i) (0.9+0i)]
+```
+
+The diagonal elements are the probabilities of measuring each basis state. Off-diagonal elements encode quantum coherences.
+
+## Checking purity
+
+The **purity** of a density matrix is `Tr(ρ²)`:
+
+- **Pure state**: `Tr(ρ²) = 1`
+- **Mixed state**: `Tr(ρ²) < 1`
+- **Maximally mixed** (d-dimensional): `Tr(ρ²) = 1/d`
+
+```go
+s0 := density.From(qubit.Zero())
+s1 := density.FromStates([]density.WeightedState{
+    {0.1, qubit.Zero()},
+    {0.9, qubit.One()},
+})
+
+fmt.Printf("pure : %.2f, %v\n", s0.Purity(), s0.IsPure())
+fmt.Printf("mixed: %.2f, %v\n", s1.Purity(), s1.IsMixed())
+// pure : 1.00, true
+// mixed: 0.82, true
+```
+
+## Applying noise channels
+
+Noise channels are maps `ρ → E(ρ)` defined by Kraus operators `{Kᵢ}` satisfying `Σᵢ Kᵢ†Kᵢ = I`. The `DensityMatrix` methods apply channels in-place style, returning a new `DensityMatrix`.
+
+### Bit flip
+
+With probability `p`, the qubit is flipped by X. With probability `1-p`, it is left unchanged.
+
+```go
+rho := density.From(qubit.Zero())
+x := rho.BitFlip(0.3, 0) // 30% chance of X error on qubit 0
+
+fmt.Printf("%.2f\n", x.Probability(qubit.Zero()))
+fmt.Printf("%.2f\n", x.Probability(qubit.One()))
+// 0.70
+// 0.30
+```
+
+### Phase flip
+
+With probability `p`, the qubit's phase is flipped by Z. This dephases superposition states.
+
+```go
+rho := density.From(qubit.Plus())
+z := rho.PhaseFlip(0.3, 0) // 30% chance of Z error on qubit 0
+
+fmt.Printf("%.2f\n", z.Probability(qubit.Plus()))
+fmt.Printf("%.2f\n", z.Probability(qubit.Minus()))
+// 0.70
+// 0.30
+```
+
+### Depolarizing
+
+The depolarizing channel applies X, Y, or Z each with probability `p/3`, and leaves the qubit unchanged with probability `1-p`. It is the most common noise model in quantum computing.
+
+```go
+// XrhoX = |1><1|, YrhoY = |1><1|, ZrhoZ = |0><0|
+// E(rho) = 0.7|0><0| + 0.1|1><1| + 0.1|1><1| + 0.1|0><0| = 0.8|0><0| + 0.2|1><1|
+rho := density.From(qubit.Zero())
+s0 := rho.Depolarizing(0.3, 0)
+
+fmt.Printf("0: %.2f\n", s0.Probability(qubit.Zero()))
+fmt.Printf("1: %.2f\n", s0.Probability(qubit.One()))
+// 0: 0.80
+// 1: 0.20
+```
+
+### Amplitude damping
+
+Models energy loss — a qubit in `|1⟩` spontaneously decays to `|0⟩` with probability `γ`. This is the primary model for qubit relaxation (T1 decay).
+
+Kraus operators:
+
+```
+K₀ = [[1, 0], [0, √(1-γ)]]   (no decay)
+K₁ = [[0, √γ], [0, 0]]        (decay to |0>)
+```
+
+```go
+rho := density.From(qubit.Zero()).
+    AmplitudeDamping(0.7, 0)
+
+fmt.Printf("%.4f\n", rho.Probability(qubit.Zero()))
+```
+
+### Phase damping
+
+Models pure dephasing — loss of quantum coherence without energy exchange. The off-diagonal elements of `ρ` decay while the diagonal (populations) remain unchanged.
+
+Kraus operators:
+
+```
+K₀ = [[1, 0], [0, √(1-γ)]]   (no dephasing)
+K₁ = [[0, 0], [0, √γ]]        (dephasing)
+```
+
+```go
+rho := density.From(qubit.Plus()).
+    PhaseDamping(0.3, 0)
+
+fmt.Printf("%.2f\n", rho.Probability(qubit.Plus()))
+fmt.Printf("%.2f\n", rho.Probability(qubit.Minus()))
+// 0.87  (coherence partially preserved)
+// 0.13
+```
+
+### Chaining channels
+
+Channels can be chained because each returns a new `*DensityMatrix`:
+
+```go
+rho := density.From(qubit.Zero()).
+    Depolarizing(0.1, 0).
+    AmplitudeDamping(0.7, 0).
+    PhaseDamping(0.7, 0).
+    BitFlip(0.1, 0)
+
+fmt.Printf("%.4f\n", rho.Probability(qubit.Zero()))
+// 0.8840
+```
+
+## Partial trace for subsystem analysis
+
+The partial trace removes (traces out) one or more qubits from a multi-qubit density matrix, yielding the **reduced density matrix** of the remaining qubits.
+
+For an entangled system, tracing out a qubit generally produces a mixed state — the subsystem has lost information about the traced-out qubit.
+
+```go
+qsim := q.New()
+{
+    // bell state
+    qb := qsim.Zeros(2)
+    qsim.H(qb[0])
+    qsim.CNOT(qb[0], qb[1])
+}
+
+rho := density.From(qsim.Qubit())
+s0 := rho.TraceOut(1) // trace out qubit 1
+s1 := rho.TraceOut(0) // trace out qubit 0
+
+fmt.Printf("trace: %.2v, purity: %.2v\n", rho.Trace(), rho.Purity())
+fmt.Printf("trace: %.2v, purity: %.2v\n", s0.Trace(), s0.Purity())
+fmt.Printf("trace: %.2v, purity: %.2v\n", s1.Trace(), s1.Purity())
+// trace: 1, purity: 1
+// trace: 1, purity: 0.5
+// trace: 1, purity: 0.5
+```
+
+The Bell state as a whole is pure (`purity = 1`). But when you trace out either qubit, the remaining subsystem is maximally mixed (`purity = 0.5`). This is a direct signature of entanglement — neither qubit has a definite state on its own.
+
+`PartialTrace(qb ...int)` is the lower-level method; `TraceOut` is an alias with the same signature.
+
+<AccordionGroup>
+  <Accordion title="What is a Kraus operator?">
+    A Kraus operator `Kᵢ` is a matrix that describes one possible outcome of a quantum process on an open system. The complete set `{Kᵢ}` defines the channel `E`:
+
+    ```
+    E(ρ) = Σᵢ Kᵢ ρ Kᵢ†
+    ```
+
+    The completeness relation `Σᵢ Kᵢ†Kᵢ = I` ensures that probability is preserved (the trace of `ρ` remains 1).
+
+    Every physically allowed quantum operation (including noise, measurement, and unitary evolution) can be written in this Kraus operator-sum form. Unitary evolution is the special case where there is only one Kraus operator and it is unitary: `E(ρ) = UρU†`.
+
+    In the `density` package, Kraus operators are constructed inside each `ChannelFunc` and applied via `DensityMatrix.ApplyKraus`. You can define a custom channel using `density.NewChannel(kraus ...)` and apply it with `DensityMatrix.ApplyChannel`.
+
+    **Reference:** Nielsen & Chuang, *Quantum Computation and Quantum Information*, Chapter 8.
+  </Accordion>
+</AccordionGroup>
+
+## Reference
+
+Nielsen, M. A. and Chuang, I. L. *Quantum Computation and Quantum Information*, 10th ed. Cambridge University Press, 2010. Chapter 8 covers quantum noise and quantum operations in depth.

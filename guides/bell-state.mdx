@@ -1,0 +1,141 @@
+---
+title: "Bell State"
+description: "Create a maximally entangled two-qubit state using Hadamard and CNOT gates, and observe quantum correlations through measurement."
+---
+
+A Bell state is a maximally entangled two-qubit quantum state. When you measure one qubit, the outcome of the other is immediately determined — no matter how far apart they are. This makes Bell states foundational to quantum teleportation, superdense coding, and quantum cryptography.
+
+The specific Bell state created here is:
+
+```
+|Φ+⟩ = (|00⟩ + |11⟩) / √2
+```
+
+Both qubits are in a superposition of `|00⟩` and `|11⟩` with equal probability. They are never in `|01⟩` or `|10⟩`.
+
+## Creating a Bell state
+
+<Steps>
+  <Step title="Create the simulator and initialize two qubits">
+    Instantiate a new simulator with `q.New()`, then allocate two qubits in the `|0⟩` state using `qsim.Zero()`.
+
+    ```go
+    qsim := q.New()
+
+    // generate qubits of |0>|0>
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+    ```
+
+    Both `q0` and `q1` start in the computational basis state `|0⟩`. The combined system is `|00⟩`.
+  </Step>
+
+  <Step title="Apply a Hadamard gate to q0">
+    The Hadamard gate puts `q0` into an equal superposition of `|0⟩` and `|1⟩`:
+
+    ```
+    H|0⟩ = (|0⟩ + |1⟩) / √2
+    ```
+
+    ```go
+    qsim.H(q0)
+    ```
+
+    After this step, the system is `(|0⟩ + |1⟩)/√2 ⊗ |0⟩ = (|00⟩ + |10⟩)/√2`.
+  </Step>
+
+  <Step title="Apply CNOT with q0 as control and q1 as target">
+    The CNOT gate flips `q1` only when `q0` is `|1⟩`. This creates entanglement between the two qubits.
+
+    ```go
+    qsim.CNOT(q0, q1)
+    ```
+
+    After CNOT:
+    - `|00⟩` stays `|00⟩` (control is 0, target unchanged)
+    - `|10⟩` becomes `|11⟩` (control is 1, target flipped)
+
+    The result is `(|00⟩ + |11⟩)/√2` — a Bell state.
+  </Step>
+
+  <Step title="Inspect the state">
+    Iterate over `qsim.State()` to print each basis state with its amplitude and probability:
+
+    ```go
+    for _, s := range qsim.State() {
+      fmt.Println(s)
+    }
+
+    // [00][  0]( 0.7071 0.0000i): 0.5000
+    // [11][  3]( 0.7071 0.0000i): 0.5000
+    ```
+
+    Each line has the format:
+
+    ```
+    [binary representation][decimal index](amplitude real imaginary): probability
+    ```
+
+    - `[00]` — basis state in binary (`|00⟩`)
+    - `[  0]` — decimal index of the basis state
+    - `( 0.7071 0.0000i)` — complex amplitude; `1/√2 ≈ 0.7071`
+    - `: 0.5000` — measurement probability (`|0.7071|² = 0.5`)
+
+    The state `|01⟩` and `|10⟩` do not appear because their amplitudes are zero.
+  </Step>
+
+  <Step title="Measure both qubits and verify correlation">
+    Measuring collapses the superposition. Both qubits are measured independently, but because they are entangled they always yield the same outcome.
+
+    ```go
+    m0 := qsim.Measure(q0)
+    m1 := qsim.Measure(q1)
+    fmt.Println(m0.Equal(m1)) // always true
+
+    for _, s := range qsim.State() {
+      fmt.Println(s)
+    }
+
+    // [00][  0]( 1.0000 0.0000i): 1.0000
+    // or
+    // [11][  3]( 1.0000 0.0000i): 1.0000
+    ```
+
+    After measurement the state collapses deterministically to either `|00⟩` or `|11⟩`, each with 50% probability. The amplitude becomes `1.0000` and the probability becomes `1.0000`, confirming the wavefunction has fully collapsed.
+
+    `m0.Equal(m1)` returns `true` every time — the two qubits always agree.
+  </Step>
+</Steps>
+
+## Complete example
+
+```go
+qsim := q.New()
+
+// generate qubits of |0>|0>
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+
+// apply quantum circuit
+qsim.H(q0)
+qsim.CNOT(q0, q1)
+
+for _, s := range qsim.State() {
+  fmt.Println(s)
+}
+
+// [00][  0]( 0.7071 0.0000i): 0.5000
+// [11][  3]( 0.7071 0.0000i): 0.5000
+
+m0 := qsim.Measure(q0)
+m1 := qsim.Measure(q1)
+fmt.Println(m0.Equal(m1)) // always true
+
+for _, s := range qsim.State() {
+  fmt.Println(s)
+}
+
+// [00][  0]( 1.0000 0.0000i): 1.0000
+// or
+// [11][  3]( 1.0000 0.0000i): 1.0000
+```

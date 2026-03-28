@@ -1,0 +1,148 @@
+---
+title: "Quantum Teleportation"
+description: "Transmit an arbitrary qubit state from one party to another using quantum entanglement and two classical bits."
+---
+
+Quantum teleportation is a protocol for transmitting an unknown qubit state from one party (Alice) to another (Bob) using a pre-shared Bell pair and two classical bits of communication. The quantum state itself is not physically transmitted — instead, the entanglement channel and classical corrections reconstruct the state on Bob's qubit.
+
+<Note>
+  Quantum teleportation does not enable faster-than-light communication. Bob cannot recover the teleported state until he receives the two classical bits from Alice, which travel at or below the speed of light.
+</Note>
+
+## Protocol walkthrough
+
+<Steps>
+  <Step title="Prepare the state to teleport">
+    Create a qubit `phi` in the state `|φ⟩ = a|0⟩ + b|1⟩` where `|a|² = 0.2` and `|b|² = 0.8`. The `qsim.New(1, 2)` constructor accepts unnormalized amplitudes and normalizes them automatically.
+
+    ```go
+    qsim := q.New()
+
+    // generate qubits of |phi>|0>|0>
+    phi := qsim.New(1, 2)
+    q0 := qsim.Zero()
+    q1 := qsim.Zero()
+
+    // |phi> is normalized. |phi> = a|0> + b|1>, |a|^2 = 0.2, |b|^2 = 0.8
+    for _, s := range qsim.State(phi) {
+      fmt.Println(s)
+    }
+
+    // [0][  0]( 0.4472 0.0000i): 0.2000
+    // [1][  1]( 0.8944 0.0000i): 0.8000
+    ```
+
+    The amplitudes `0.4472 ≈ 1/√5` and `0.8944 ≈ 2/√5` correspond to `|a|² = 0.2` and `|b|² = 0.8`. This is the state Alice wants to send to Bob.
+  </Step>
+
+  <Step title="Create a Bell pair between q0 and q1">
+    Alice and Bob each hold one qubit of a shared entangled pair. Apply Hadamard to `q0` then CNOT to entangle `q0` (Alice's qubit) and `q1` (Bob's qubit).
+
+    ```go
+    qsim.H(q0)
+    qsim.CNOT(q0, q1)
+    ```
+
+    This creates the Bell state `(|00⟩ + |11⟩)/√2` between `q0` and `q1`.
+  </Step>
+
+  <Step title="Alice entangles phi with her half of the Bell pair">
+    Alice applies a CNOT gate with `phi` as control and `q0` as target, then applies a Hadamard to `phi`.
+
+    ```go
+    qsim.CNOT(phi, q0)
+    qsim.H(phi)
+    ```
+
+    These two operations entangle Alice's qubit-to-teleport (`phi`) with her half of the Bell pair (`q0`).
+  </Step>
+
+  <Step title="Alice measures and sends classical bits to Bob">
+    Alice measures both `phi` and `q0`. The results are two classical bits — `mz` from measuring `phi` and `mx` from measuring `q0`.
+
+    ```go
+    // Alice sends mz, mx to Bob
+    mz := qsim.Measure(phi)
+    mx := qsim.Measure(q0)
+    ```
+
+    Alice transmits these two bits to Bob through a classical channel.
+  </Step>
+
+  <Step title="Bob applies conditional corrections">
+    Bob uses Alice's classical bits to apply corrective gates to his qubit `q1`:
+
+    - If `mx` is `1`, apply an X gate (bit flip)
+    - If `mz` is `1`, apply a Z gate (phase flip)
+
+    ```go
+    // Bob Applies X and Z
+    qsim.CondX(mx.IsOne(), q1)
+    qsim.CondZ(mz.IsOne(), q1)
+    ```
+
+    `CondX` and `CondZ` are no-ops when the condition is `false`, so at most two corrections are applied.
+  </Step>
+
+  <Step title="Verify Bob's qubit matches the original state">
+    After the corrections, `q1` holds exactly the state `phi` originally had.
+
+    ```go
+    // Bob got |phi> state with q1
+    for _, s := range qsim.State(q1) {
+      fmt.Println(s)
+    }
+
+    // [0][  0]( 0.4472 0.0000i): 0.2000
+    // [1][  1]( 0.8944 0.0000i): 0.8000
+    ```
+
+    Bob's qubit now has amplitudes `0.4472` and `0.8944` — identical to the original `phi` state. The teleportation is complete.
+  </Step>
+</Steps>
+
+## Why it works
+
+The teleportation protocol exploits the structure of the Bell basis. When Alice performs her CNOT and Hadamard, the three-qubit system can be rewritten as a sum over the four Bell states on Alice's qubits, each paired with a corresponding single-qubit state on Bob's qubit. Alice's measurement projects onto one of these four terms, and Bob's conditional corrections undo the corresponding transformation — leaving Bob with exactly `|φ⟩`.
+
+The original qubit `phi` is destroyed in the process (Alice's measurement collapses it), consistent with the no-cloning theorem.
+
+## Complete example
+
+```go
+qsim := q.New()
+
+// generate qubits of |phi>|0>|0>
+phi := qsim.New(1, 2)
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+
+// |phi> is normalized. |phi> = a|0> + b|1>, |a|^2 = 0.2, |b|^2 = 0.8
+for _, s := range qsim.State(phi) {
+  fmt.Println(s)
+}
+
+// [0][  0]( 0.4472 0.0000i): 0.2000
+// [1][  1]( 0.8944 0.0000i): 0.8000
+
+qsim.H(q0)
+qsim.CNOT(q0, q1)
+qsim.CNOT(phi, q0)
+qsim.H(phi)
+
+// Alice sends mz, mx to Bob
+mz := qsim.Measure(phi)
+mx := qsim.Measure(q0)
+
+// Bob Applies X and Z
+qsim.CondX(mx.IsOne(), q1)
+qsim.CondZ(mz.IsOne(), q1)
+
+// Bob got |phi> state with q1
+for _, s := range qsim.State(q1) {
+  fmt.Println(s)
+}
+
+// [0][  0]( 0.4472 0.0000i): 0.2000
+// [1][  1]( 0.8944 0.0000i): 0.8000
+```

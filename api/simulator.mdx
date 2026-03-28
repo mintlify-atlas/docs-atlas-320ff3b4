@@ -1,0 +1,388 @@
+---
+title: "Simulator"
+description: "The Q simulator type — create qubits, apply gates, and measure quantum state."
+---
+
+## Overview
+
+`Q` is the top-level quantum computation simulator. It owns a single state vector that grows as qubits are added via `Zero`, `One`, or `New`. All gate methods return `*Q` so calls can be chained.
+
+```go
+import "github.com/itsubaki/q"
+
+qsim := q.New()
+
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+
+qsim.H(q0)
+qsim.CNOT(q0, q1)
+
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+// [00][  0]( 0.7071 0.0000i): 0.5000
+// [11][  3]( 0.7071 0.0000i): 0.5000
+
+m0 := qsim.Measure(q0)
+m1 := qsim.Measure(q1)
+fmt.Println(m0.Equal(m1)) // always true
+```
+
+---
+
+## Creating the simulator
+
+### `q.New() *Q`
+
+Returns a new quantum computation simulator. The internal state vector is `nil` until the first qubit is added.
+
+```go
+qsim := q.New()
+```
+
+### `(*Q).Rand`
+
+```go
+Rand func() float64
+```
+
+The random number generator used during measurement. Defaults to `rand.Float64`. Override to use a seeded source for reproducible results.
+
+```go
+qsim := q.New()
+qsim.Rand = func() float64 { return 0.3 } // always collapses to |0>
+```
+
+---
+
+## Qubit initialization
+
+### `(*Q).Zero() Qubit`
+
+Adds a qubit initialized to |0⟩ and returns its handle.
+
+```go
+q0 := qsim.Zero() // |0>
+```
+
+### `(*Q).One() Qubit`
+
+Adds a qubit initialized to |1⟩ and returns its handle.
+
+```go
+q0 := qsim.One() // |1>
+```
+
+### `(*Q).New(v ...complex128) Qubit`
+
+Adds a qubit with custom amplitudes and returns its handle. The amplitudes are normalized automatically.
+
+<ParamField path="v" type="...complex128" required>
+  Amplitudes for |0⟩ and |1⟩. Normalized before use so only the ratio matters.
+</ParamField>
+
+```go
+// |phi> = a|0> + b|1> where |a|^2 = 0.2, |b|^2 = 0.8
+phi := qsim.New(1, 2)
+```
+
+### `(*Q).Zeros(n int) []Qubit`
+
+Adds `n` qubits all in the |0⟩ state and returns their handles.
+
+```go
+qubits := qsim.Zeros(3) // [q0, q1, q2], each |0>
+```
+
+### `(*Q).Ones(n int) []Qubit`
+
+Adds `n` qubits all in the |1⟩ state and returns their handles.
+
+```go
+qubits := qsim.Ones(3) // [q0, q1, q2], each |1>
+```
+
+### `(*Q).ZeroLog2(N int) []Qubit`
+
+Adds `⌊log₂(N)⌋ + 1` qubits in the |0⟩ state. Useful for allocating a register large enough to represent the integer `N`.
+
+```go
+reg := qsim.ZeroLog2(15) // 4 qubits, enough to hold 0–15
+```
+
+---
+
+## Gates
+
+All single-qubit gate methods accept one or more `Qubit` handles and apply the gate to each. All gate methods return `*Q` for chaining.
+
+### Pauli and Clifford gates
+
+| Method | Description |
+|---|---|
+| `(*Q).I(qb ...Qubit) *Q` | Identity — no-op |
+| `(*Q).X(qb ...Qubit) *Q` | Pauli-X (bit flip) |
+| `(*Q).Y(qb ...Qubit) *Q` | Pauli-Y |
+| `(*Q).Z(qb ...Qubit) *Q` | Pauli-Z (phase flip) |
+| `(*Q).H(qb ...Qubit) *Q` | Hadamard |
+| `(*Q).S(qb ...Qubit) *Q` | Phase gate (π/2 rotation) |
+| `(*Q).T(qb ...Qubit) *Q` | T gate (π/4 rotation) |
+
+```go
+qsim.H(q0).X(q1).Z(q0)
+```
+
+### Rotation gates
+
+| Method | Description |
+|---|---|
+| `(*Q).R(theta float64, qb ...Qubit) *Q` | Phase rotation by `theta` |
+| `(*Q).RX(theta float64, qb ...Qubit) *Q` | Rotation around X-axis |
+| `(*Q).RY(theta float64, qb ...Qubit) *Q` | Rotation around Y-axis |
+| `(*Q).RZ(theta float64, qb ...Qubit) *Q` | Rotation around Z-axis |
+
+### Universal gate
+
+### `(*Q).U(theta, phi, lambda float64, qb ...Qubit) *Q`
+
+Applies the general single-qubit unitary gate. Parameterized by three Euler angles.
+
+```go
+qsim.U(math.Pi/2, 0, math.Pi, q0) // equivalent to H
+```
+
+### Generic gate application
+
+#### `(*Q).G(g *matrix.Matrix, qb ...Qubit) *Q`
+
+Applies an arbitrary 2×2 gate matrix to the given qubits.
+
+#### `(*Q).Apply(g ...*matrix.Matrix) *Q`
+
+Applies a sequence of full-system gate matrices to the entire state vector.
+
+### Two-qubit controlled gates
+
+| Method | Description |
+|---|---|
+| `(*Q).CX(control, target Qubit) *Q` | CNOT (alias: `CNOT`) |
+| `(*Q).CNOT(control, target Qubit) *Q` | CNOT |
+| `(*Q).CZ(control, target Qubit) *Q` | Controlled-Z |
+| `(*Q).CR(theta float64, control, target Qubit) *Q` | Controlled-R |
+| `(*Q).C(g *matrix.Matrix, control, target Qubit) *Q` | Controlled arbitrary gate |
+| `(*Q).CU(theta, phi, lambda float64, control, target Qubit) *Q` | Controlled-U |
+
+```go
+qsim.H(q0)
+qsim.CNOT(q0, q1) // entangle q0 and q1
+```
+
+### Multi-control gates
+
+| Method | Description |
+|---|---|
+| `(*Q).CCNOT(c0, c1, target Qubit) *Q` | Toffoli (two controls) |
+| `(*Q).CCCNOT(c0, c1, c2, target Qubit) *Q` | Three-control NOT |
+| `(*Q).CCZ(c0, c1, target Qubit) *Q` | Two-control Z |
+
+### Slice-based controlled gates
+
+Use these when working with dynamically-constructed control/target lists.
+
+| Method | Description |
+|---|---|
+| `(*Q).Controlled(g *matrix.Matrix, control, target []Qubit) *Q` | Controlled gate with slice inputs |
+| `(*Q).ControlledU(theta, phi, lambda float64, control, target []Qubit) *Q` | Controlled-U with slice inputs |
+| `(*Q).ControlledH(control, target []Qubit) *Q` | Controlled-Hadamard |
+| `(*Q).ControlledX(control, target []Qubit) *Q` | Controlled-X (CNOT) |
+| `(*Q).ControlledNot(control, target []Qubit) *Q` | Alias for ControlledX |
+| `(*Q).ControlledZ(control, target []Qubit) *Q` | Controlled-Z |
+| `(*Q).ControlledR(theta float64, control, target []Qubit) *Q` | Controlled-R |
+
+### Conditional gates
+
+Apply a gate only when a classical boolean condition is true. These are used after measurement in protocols like quantum teleportation.
+
+| Method | Description |
+|---|---|
+| `(*Q).CondX(condition bool, qb ...Qubit) *Q` | Apply X if condition is true |
+| `(*Q).CondZ(condition bool, qb ...Qubit) *Q` | Apply Z if condition is true |
+| `(*Q).Cond(condition bool, g *matrix.Matrix, qb ...Qubit) *Q` | Apply arbitrary gate if condition is true |
+
+```go
+mz := qsim.Measure(phi)
+mx := qsim.Measure(q0)
+
+qsim.CondX(mx.IsOne(), q1)
+qsim.CondZ(mz.IsOne(), q1)
+```
+
+### Swap
+
+#### `(*Q).Swap(qb ...Qubit) *Q`
+
+Swaps qubits pairwise from the outside in. Pass an even number of qubits, or a sequence where the first and last are swapped, the second and second-to-last are swapped, and so on.
+
+```go
+qsim.Swap(q0, q1)
+```
+
+### Quantum Fourier Transform
+
+| Method | Description |
+|---|---|
+| `(*Q).QFT(qb ...Qubit) *Q` | Quantum Fourier Transform over the given qubits |
+| `(*Q).InvQFT(qb ...Qubit) *Q` | Inverse Quantum Fourier Transform |
+
+```go
+reg := qsim.Zeros(4)
+qsim.QFT(reg...)
+qsim.InvQFT(reg...)
+```
+
+---
+
+## Measurement
+
+### `(*Q).Measure(qb ...Qubit) *qubit.Qubit`
+
+Performs a projective measurement on the given qubits. The simulator's state vector collapses accordingly. If no qubits are provided, all qubits are measured.
+
+Returns a `*qubit.Qubit` representing the collapsed state of the measured qubits.
+
+```go
+result := qsim.Measure(q0)
+fmt.Println(result.IsZero()) // true or false
+```
+
+### `(*Q).M(qb ...Qubit) *qubit.Qubit`
+
+Alias for `Measure`.
+
+---
+
+## State inspection
+
+### `(*Q).NumQubits() int`
+
+Returns the total number of qubits currently registered in the simulator.
+
+```go
+qsim := q.New()
+qsim.Zero()
+qsim.Zero()
+fmt.Println(qsim.NumQubits()) // 2
+```
+
+### `(*Q).Amplitude() []complex128`
+
+Returns the raw amplitude vector of the full quantum state. The slice has length `2^n` for `n` qubits.
+
+```go
+amps := qsim.Amplitude()
+// e.g. [(0.707+0i) (0+0i) (0+0i) (0.707+0i)] for a Bell state
+```
+
+### `(*Q).Probability() []float64`
+
+Returns the measurement probability for each basis state. Each entry is `|amplitude|²`.
+
+```go
+probs := qsim.Probability()
+// e.g. [0.5 0 0 0.5] for a Bell state
+```
+
+### `(*Q).State(reg ...any) []qubit.State`
+
+Returns the non-zero states of the simulator, optionally grouped into named registers.
+
+<ParamField path="reg" type="...any">
+  Zero or more register descriptors. Each can be a single `Qubit` or a `[]Qubit`. When provided, states are shown with one binary/integer column per register. When omitted, all qubits are treated as a single register.
+</ParamField>
+
+```go
+// All qubits as one register
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+// [00][  0]( 0.7071 0.0000i): 0.5000
+// [11][  3]( 0.7071 0.0000i): 0.5000
+
+// Separate registers
+phi := qsim.New(1, 2)
+q0  := qsim.Zero()
+for _, s := range qsim.State(phi, q0) {
+    fmt.Println(s)
+}
+```
+
+### `(*Q).String() string`
+
+Returns the string representation of the internal state vector. Delegates to `qubit.Qubit.String()`.
+
+---
+
+## Utility
+
+### `(*Q).Reset(qb ...Qubit)`
+
+Forces the given qubits back to the |0⟩ state. Measures each qubit and applies an X gate if the result was |1⟩.
+
+```go
+qsim.Reset(q0, q1)
+```
+
+### `(*Q).Clone() *Q`
+
+Returns a deep copy of the simulator, including the full state vector. The `Rand` function reference is shared.
+
+```go
+saved := qsim.Clone()
+```
+
+### `(*Q).Qubit() *qubit.Qubit`
+
+Returns the internal `*qubit.Qubit` for direct low-level access.
+
+```go
+internal := qsim.Qubit()
+```
+
+---
+
+## Package-level functions
+
+### `q.Top(s []qubit.State, n int) []qubit.State`
+
+Returns the `n` states with the highest probability, sorted descending. If `n < 0`, returns all states unchanged.
+
+<ParamField path="s" type="[]qubit.State" required>
+  The state slice to sort and truncate, typically from `(*Q).State()`.
+</ParamField>
+<ParamField path="n" type="int" required>
+  Number of top states to return. Pass a negative value to return all states.
+</ParamField>
+
+```go
+top3 := q.Top(qsim.State(), 3)
+for _, s := range top3 {
+    fmt.Println(s)
+}
+```
+
+### `q.Index(qb ...Qubit) []int`
+
+Converts a list of `Qubit` handles to their underlying integer indices.
+
+```go
+indices := q.Index(q0, q1, q2) // [0, 1, 2]
+```
+
+### `q.Theta(k int) float64`
+
+Returns `2π / 2^k`. Used when constructing controlled rotation angles for QFT circuits.
+
+```go
+angle := q.Theta(2) // π/2
+```

@@ -1,0 +1,433 @@
+---
+title: "Qubit"
+description: "The Qubit type, State type, and lower-level qubit operations."
+---
+
+<Note>
+  The `qubit.Qubit` type is the low-level representation. Most users work through the `Q` simulator instead.
+</Note>
+
+## Qubit type
+
+```go
+import "github.com/itsubaki/q/quantum/qubit"
+```
+
+### `type Qubit struct`
+
+`Qubit` holds an n-qubit state vector as a slice of `complex128` amplitudes. The vector has length `2^n`. The struct is unexported except for the `Rand` field.
+
+```go
+type Qubit struct {
+    // unexported fields: n int, state *vector.Vector
+    Rand func() float64 // random number generator used during Measure
+}
+```
+
+---
+
+## Constructors
+
+### `qubit.New(v *vector.Vector) *Qubit`
+
+Creates a qubit from an existing `vector.Vector`. The state is normalized automatically.
+
+```go
+v := vector.New(1, 0) // |0>
+q := qubit.New(v)
+```
+
+### `qubit.Zero(n ...int) *Qubit`
+
+Returns a qubit register in the all-zeros state |0…0⟩. The optional `n` argument sets the number of qubits (default 1).
+
+```go
+q1 := qubit.Zero()    // single qubit |0>
+q3 := qubit.Zero(3)   // 3-qubit register |000>
+```
+
+### `qubit.One(n ...int) *Qubit`
+
+Returns a qubit register in the all-ones state |1…1⟩. The optional `n` argument sets the number of qubits (default 1).
+
+```go
+q1 := qubit.One()     // single qubit |1>
+q3 := qubit.One(3)    // 3-qubit register |111>
+```
+
+### `qubit.Plus(n ...int) *Qubit`
+
+Returns a qubit register in the |+⟩ state — equal superposition `(|0⟩ + |1⟩) / √2` — by applying H to each qubit of a zero register.
+
+```go
+qp := qubit.Plus() // (|0> + |1>) / sqrt(2)
+```
+
+### `qubit.Minus(n ...int) *Qubit`
+
+Returns a qubit register in the |−⟩ state — equal superposition `(|0⟩ − |1⟩) / √2` — by applying H to each qubit of a one register.
+
+```go
+qm := qubit.Minus() // (|0> - |1>) / sqrt(2)
+```
+
+### `qubit.From(binary string) *Qubit`
+
+Constructs a multi-qubit register from a binary string. Each character becomes one qubit:
+
+| Character | State |
+|---|---|
+| `'0'` | \|0⟩ |
+| `'1'` | \|1⟩ |
+| `'+'` | \|+⟩ |
+| `'-'` | \|−⟩ |
+
+```go
+q := qubit.From("01+") // |0> ⊗ |1> ⊗ |+>
+```
+
+### `qubit.Bloch(theta, phi float64) *Qubit`
+
+Returns the single qubit `cos(θ/2)|0⟩ + e^(iφ) sin(θ/2)|1⟩` from Bloch sphere angles.
+
+```go
+q := qubit.Bloch(math.Pi/2, 0) // |+>
+```
+
+---
+
+## Properties
+
+### `(*Qubit).NumQubits() int`
+
+Returns the number of qubits `n` in the register.
+
+```go
+q := qubit.Zero(3)
+fmt.Println(q.NumQubits()) // 3
+```
+
+### `(*Qubit).Dim() int`
+
+Returns the dimension of the state vector, which is `2^n`.
+
+```go
+q := qubit.Zero(3)
+fmt.Println(q.Dim()) // 8
+```
+
+### `(*Qubit).IsZero(tol ...float64) bool`
+
+Returns `true` if the qubit is equal to |0⟩, within optional tolerance.
+
+```go
+q := qubit.Zero()
+fmt.Println(q.IsZero()) // true
+```
+
+### `(*Qubit).IsOne(tol ...float64) bool`
+
+Returns `true` if the qubit is equal to |1⟩, within optional tolerance.
+
+```go
+q := qubit.One()
+fmt.Println(q.IsOne()) // true
+```
+
+### `(*Qubit).Amplitude() []complex128`
+
+Returns the raw amplitude slice of length `2^n`.
+
+```go
+q := qubit.Plus()
+fmt.Println(q.Amplitude()) // [(0.707+0i) (0.707+0i)]
+```
+
+### `(*Qubit).Probability() []float64`
+
+Returns `|amplitude[i]|²` for each basis state.
+
+```go
+q := qubit.Plus()
+fmt.Println(q.Probability()) // [0.5 0.5]
+```
+
+---
+
+## Operations
+
+### `(*Qubit).TensorProduct(qb *Qubit) *Qubit`
+
+Extends the register in-place by taking the tensor product with `qb`. Modifies and returns the receiver.
+
+```go
+q0 := qubit.Zero()
+q1 := qubit.One()
+q0.TensorProduct(q1) // q0 is now |01>
+```
+
+### `qubit.TensorProduct(qb ...*Qubit) *Qubit`
+
+Package-level function. Returns the tensor product of all provided qubits.
+
+```go
+q := qubit.TensorProduct(qubit.Zero(), qubit.One(), qubit.Plus())
+```
+
+### `(*Qubit).Apply(g ...*matrix.Matrix) *Qubit`
+
+Applies one or more full-system gate matrices to the state vector in sequence.
+
+```go
+q.Apply(gate.H(), gate.X())
+```
+
+### `(*Qubit).G(g *matrix.Matrix, idx int)`
+
+Applies a 2×2 gate matrix to qubit at position `idx`. Mutates the state vector in-place. Does not return `*Qubit`.
+
+```go
+q.G(gate.H(), 0)
+```
+
+### `(*Qubit).Normalize() *Qubit`
+
+Normalizes the state vector so that the sum of squared amplitudes equals 1.
+
+```go
+q.Normalize()
+```
+
+### `(*Qubit).Clone() *Qubit`
+
+Returns a deep copy of the qubit, including its state vector and `Rand` reference.
+
+```go
+snapshot := q.Clone()
+```
+
+### `(*Qubit).Equal(qb *Qubit, tol ...float64) bool`
+
+Returns `true` if the two state vectors are element-wise equal within the optional tolerance.
+
+```go
+a := qubit.Zero()
+b := qubit.Zero()
+fmt.Println(a.Equal(b)) // true
+```
+
+---
+
+## Measurement
+
+### `(*Qubit).Measure(idx int) *Qubit`
+
+Performs a projective measurement on the qubit at position `idx`. Collapses the state vector and returns either `qubit.Zero()` or `qubit.One()` to indicate the outcome.
+
+```go
+result := q.Measure(0)
+fmt.Println(result.IsZero())
+```
+
+<Note>
+  `Measure` mutates the receiver's state vector via wavefunction collapse. Use `Clone()` beforehand if you need to preserve the pre-measurement state.
+</Note>
+
+### `(*Qubit).BinaryString() string`
+
+Measures all qubits sequentially on a clone and returns the result as a binary string such as `"101"`.
+
+```go
+q := qubit.From("10")
+fmt.Println(q.BinaryString()) // "10"
+```
+
+### `(*Qubit).Int() int`
+
+Measures all qubits and returns the integer value of the binary result.
+
+```go
+q := qubit.From("101")
+fmt.Println(q.Int()) // 5
+```
+
+---
+
+## Single-qubit gates
+
+All gate methods below take an `idx int` parameter specifying which qubit in the register to act on, and return `*Qubit` for chaining (except `G`).
+
+| Method | Description |
+|---|---|
+| `H(idx int) *Qubit` | Hadamard |
+| `X(idx int) *Qubit` | Pauli-X (bit flip) |
+| `Y(idx int) *Qubit` | Pauli-Y |
+| `Z(idx int) *Qubit` | Pauli-Z (phase flip) |
+| `S(idx int) *Qubit` | Phase gate — R(π/2) |
+| `T(idx int) *Qubit` | T gate — R(π/4) |
+| `R(theta float64, idx int) *Qubit` | Phase rotation by `theta` |
+| `RX(theta float64, idx int) *Qubit` | Rotation around X-axis |
+| `RY(theta float64, idx int) *Qubit` | Rotation around Y-axis |
+| `RZ(theta float64, idx int) *Qubit` | Rotation around Z-axis |
+| `U(theta, phi, lambda float64, idx int) *Qubit` | Universal single-qubit gate |
+| `I(idx int) *Qubit` | Identity (no-op) |
+
+```go
+q := qubit.Zero(2)
+q.H(0).X(1)
+```
+
+### Quantum Fourier Transform
+
+| Method | Description |
+|---|---|
+| `QFT(idx ...int) *Qubit` | Quantum Fourier Transform over the specified qubit indices (all if none given) |
+| `InvQFT(idx ...int) *Qubit` | Inverse Quantum Fourier Transform |
+
+```go
+q := qubit.Zero(4)
+q.QFT()
+q.InvQFT()
+```
+
+### Swap
+
+#### `(*Qubit).Swap(i, j int) *Qubit`
+
+Swaps the states of qubits at positions `i` and `j`.
+
+```go
+q.Swap(0, 1)
+```
+
+---
+
+## Controlled gates
+
+All controlled gate methods operate on qubit index integers directly (not `q.Qubit` handles).
+
+### Convenience shorthands (single control)
+
+| Method | Description |
+|---|---|
+| `C(g *matrix.Matrix, control, target int) *Qubit` | Controlled arbitrary 2×2 gate |
+| `CU(theta, phi, lambda float64, control, target int) *Qubit` | Controlled-U |
+| `CH(control, target int) *Qubit` | Controlled-Hadamard |
+| `CX(control, target int) *Qubit` | Controlled-X (CNOT) |
+| `CZ(control, target int) *Qubit` | Controlled-Z |
+| `CR(theta float64, control, target int) *Qubit` | Controlled phase rotation |
+
+```go
+q := qubit.Zero(2)
+q.H(0)
+q.CX(0, 1) // Bell state
+```
+
+### Multi-control variants
+
+| Method | Description |
+|---|---|
+| `Controlled(g *matrix.Matrix, control []int, target int) *Qubit` | Controlled gate with multiple controls |
+| `ControlledU(theta, phi, lambda float64, control []int, target int) *Qubit` | Controlled-U with multiple controls |
+| `ControlledH(control []int, target int) *Qubit` | Multi-control Hadamard |
+| `ControlledX(control []int, target int) *Qubit` | Multi-control NOT (Toffoli etc.) |
+| `ControlledZ(control []int, target int) *Qubit` | Multi-control Z |
+| `ControlledR(theta float64, control []int, target int) *Qubit` | Multi-control phase rotation |
+
+```go
+// Toffoli gate: flip target when both controls are |1>
+q.ControlledX([]int{0, 1}, 2)
+```
+
+---
+
+## State type
+
+```go
+// quantum/qubit/state.go
+type State struct { /* unexported */ }
+```
+
+`State` represents a single basis state in the output of `(*Qubit).State()` or `(*Q).State()`. It carries the amplitude, probability, and binary/integer index for one term of the superposition.
+
+### Output format
+
+`State.String()` produces the line format printed by `fmt.Println(s)`:
+
+```
+[binary][index]( real imagi): probability
+```
+
+For example:
+
+```
+[00][  0]( 0.7071 0.0000i): 0.5000
+[11][  3]( 0.7071 0.0000i): 0.5000
+```
+
+When multiple registers are passed to `(*Q).State(reg...)`, `binary` and `index` have one entry per register:
+
+```
+[0 1][  0   1]( 0.4472 0.0000i): 0.2000
+```
+
+### Methods
+
+#### `(State).Probability() float64`
+
+Returns `|amplitude|²` for this basis state.
+
+```go
+for _, s := range qsim.State() {
+    fmt.Printf("prob: %.4f\n", s.Probability())
+}
+```
+
+#### `(State).Amplitude() complex128`
+
+Returns the complex amplitude for this basis state.
+
+```go
+for _, s := range qsim.State() {
+    fmt.Println(s.Amplitude()) // e.g. (0.7071+0i)
+}
+```
+
+#### `(State).BinaryString() []string`
+
+Returns the binary representation of this state as a string slice — one entry per register group provided to `State()`.
+
+```go
+for _, s := range qsim.State() {
+    fmt.Println(s.BinaryString()) // e.g. ["00"] or ["0" "1"]
+}
+```
+
+#### `(State).Int() []int`
+
+Returns the integer values of the binary strings — one entry per register group.
+
+```go
+for _, s := range qsim.State() {
+    fmt.Println(s.Int()) // e.g. [0] or [0 1]
+}
+```
+
+#### `(State).Equal(v State, tol ...float64) bool`
+
+Returns `true` if two states have identical binary strings and amplitudes within the optional tolerance.
+
+### Package-level state helpers
+
+#### `qubit.Equal(s, v []State, tol ...float64) bool`
+
+Returns `true` if two state slices are element-wise equal.
+
+#### `qubit.EqualUpToGlobalPhase(s, v []State, tol ...float64) bool`
+
+Returns `true` if two state slices represent the same physical state up to a global phase factor.
+
+```go
+// Check two circuits produce the same physical result
+fmt.Println(qubit.EqualUpToGlobalPhase(qsim1.State(), qsim2.State()))
+```

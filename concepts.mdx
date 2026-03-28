@@ -1,0 +1,232 @@
+---
+title: "Core Concepts"
+description: "Understand qubits, quantum states, gates, superposition, entanglement, and measurement in the q simulator."
+---
+
+## Qubits
+
+A qubit is the fundamental unit of quantum information. Unlike a classical bit, which is either 0 or 1, a qubit can exist in a **superposition** of both states simultaneously until it is measured.
+
+In `q`, qubits are represented by the `q.Qubit` type (an integer index into the simulator's internal state vector). You allocate qubits through the simulator, not directly.
+
+<Tabs>
+  <Tab title="Zero state">
+    Allocates a qubit in the |0⟩ state. This is the standard starting point for most quantum circuits.
+
+    ```go
+    qsim := q.New()
+    q0 := qsim.Zero()
+    ```
+
+    Internally, `Zero()` calls `New(1, 0)` — amplitude 1 for |0⟩ and 0 for |1⟩.
+  </Tab>
+  <Tab title="One state">
+    Allocates a qubit in the |1⟩ state.
+
+    ```go
+    qsim := q.New()
+    q0 := qsim.One()
+    ```
+
+    Internally, `One()` calls `New(0, 1)` — amplitude 0 for |0⟩ and 1 for |1⟩.
+  </Tab>
+  <Tab title="Custom amplitudes">
+    Allocates a qubit with arbitrary complex amplitudes. The amplitudes are normalized automatically so their squared magnitudes sum to 1.
+
+    ```go
+    qsim := q.New()
+    phi := qsim.New(1, 2)
+
+    for _, s := range qsim.State(phi) {
+        fmt.Println(s)
+    }
+
+    // [0][  0]( 0.4472 0.0000i): 0.2000
+    // [1][  1]( 0.8944 0.0000i): 0.8000
+    ```
+
+    The amplitudes 1 and 2 are normalized to 1/√5 ≈ 0.4472 and 2/√5 ≈ 0.8944. The resulting probabilities are 0.2 and 0.8 respectively.
+  </Tab>
+</Tabs>
+
+<Accordion title="What is normalization?">
+  A quantum state must satisfy the normalization condition: the sum of the squared magnitudes of all amplitudes must equal 1. This ensures that the total probability of all measurement outcomes adds up to 100%.
+
+  When you write `qsim.New(1, 2)`, you are providing raw amplitude values. The simulator computes the norm:
+
+  ```
+  norm = sqrt(|1|² + |2|²) = sqrt(1 + 4) = sqrt(5)
+  ```
+
+  Then it divides each amplitude by the norm:
+
+  ```
+  a₀ = 1 / sqrt(5) ≈ 0.4472   → probability = 0.4472² ≈ 0.2000
+  a₁ = 2 / sqrt(5) ≈ 0.8944   → probability = 0.8944² ≈ 0.8000
+  ```
+
+  You never need to normalize manually — `q.New(...)` always produces a valid quantum state.
+</Accordion>
+
+## Counting qubits
+
+Use `qsim.NumQubits()` to get the total number of qubits currently allocated in the simulator:
+
+```go
+qsim := q.New()
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+q2 := qsim.One()
+
+fmt.Println(qsim.NumQubits()) // 3
+```
+
+Each call to `Zero()`, `One()`, or `New(...)` adds one qubit to the simulator and expands the internal state vector.
+
+## Tensor product
+
+When you allocate multiple qubits, the simulator stores the combined system as a single state vector computed via the **tensor product** of the individual qubit states. For two qubits, this produces a 4-dimensional vector with basis states |00⟩, |01⟩, |10⟩, and |11⟩.
+
+The dimension of the state vector is always 2ⁿ, where n is the number of qubits.
+
+## Superposition
+
+Superposition means a qubit has non-zero amplitude for more than one basis state at the same time. The Hadamard gate (`H`) is the standard way to create superposition from a |0⟩ state:
+
+```go
+qsim := q.New()
+q0 := qsim.Zero()
+qsim.H(q0)
+
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+
+// [0][  0]( 0.7071 0.0000i): 0.5000
+// [1][  1]( 0.7071 0.0000i): 0.5000
+```
+
+After `H`, `q0` has equal probability (0.5) of being measured as 0 or 1.
+
+## Entanglement
+
+Entanglement is a correlation between qubits such that the state of one cannot be described independently of the other. A CNOT gate entangles two qubits:
+
+```go
+qsim := q.New()
+q0 := qsim.Zero()
+q1 := qsim.Zero()
+
+qsim.H(q0)
+qsim.CNOT(q0, q1)
+
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+
+// [00][  0]( 0.7071 0.0000i): 0.5000
+// [11][  3]( 0.7071 0.0000i): 0.5000
+```
+
+Only |00⟩ and |11⟩ appear. The qubits are perfectly correlated: measuring one determines the other.
+
+## Reading state output
+
+`qsim.State()` returns a `[]qubit.State` slice. Each `State` prints in the format:
+
+```
+[binary][index](real imaginary i): probability
+```
+
+For example:
+
+```
+[11][  3]( 0.7071 0.0000i): 0.5000
+```
+
+| Part | Meaning |
+|------|---------|
+| `[11]` | Binary representation of the basis state |
+| `[  3]` | Integer index of the basis state (binary `11` = 3) |
+| `( 0.7071 0.0000i)` | Complex amplitude: real and imaginary parts |
+| `0.5000` | Measurement probability = \|amplitude\|² |
+
+States with amplitude zero are omitted from the output.
+
+Pass specific qubit registers to `State()` to inspect a subset of the system:
+
+```go
+// Show the state of phi only, ignoring q0 and q1
+for _, s := range qsim.State(phi) {
+    fmt.Println(s)
+}
+```
+
+## Quantum gates
+
+Gates are unitary transformations applied to one or more qubits. All gate methods on `*Q` accept variadic qubit arguments and return `*Q` for chaining.
+
+```go
+qsim.H(q0)            // Hadamard on q0
+qsim.X(q0, q1, q2)   // Pauli-X on q0, q1, and q2
+qsim.CNOT(q0, q1)     // CNOT with q0 as control, q1 as target
+qsim.H(q0).CNOT(q0, q1) // chained
+```
+
+Available single-qubit gates: `I`, `H`, `X`, `Y`, `Z`, `S`, `T`, `R`, `RX`, `RY`, `RZ`, `U`.
+
+Available multi-qubit gates: `CNOT`, `CCNOT`, `CCCNOT`, `CZ`, `CCZ`, `CR`, `Swap`, `QFT`, `InvQFT`.
+
+For arbitrary unitaries, use `G()` with a custom matrix, or `C()` for a controlled version:
+
+```go
+h := gate.U(math.Pi/2, 0, math.Pi)
+x := gate.U(math.Pi, 0, math.Pi)
+
+qsim.G(h, q0)        // apply custom gate h to q0
+qsim.C(x, q0, q1)    // apply x controlled on q0, targeting q1
+```
+
+## Measurement collapse
+
+Calling `qsim.Measure()` **collapses** the quantum state. The simulator samples an outcome probabilistically, zeroes out all amplitudes inconsistent with that outcome, and renormalizes. Subsequent calls to `State()` reflect the post-measurement state.
+
+```go
+m0 := qsim.Measure(q0)
+m1 := qsim.Measure(q1)
+
+fmt.Println(m0.Equal(m1)) // true for entangled Bell state
+
+for _, s := range qsim.State() {
+    fmt.Println(s)
+}
+
+// [00][  0]( 1.0000 0.0000i): 1.0000
+// or
+// [11][  3]( 1.0000 0.0000i): 1.0000
+```
+
+After measurement, only a single basis state remains with probability 1.0.
+
+## Reset and clone
+
+`qsim.Reset()` returns specified qubits to the |0⟩ state by measuring them and applying X if the result was |1⟩:
+
+```go
+qsim.Reset(q0, q1)
+```
+
+`qsim.Clone()` returns a deep copy of the entire simulator, preserving all qubit states:
+
+```go
+saved := qsim.Clone()
+
+qsim.H(q0) // modify original
+
+// saved still holds the pre-H state
+for _, s := range saved.State() {
+    fmt.Println(s)
+}
+```
+
+Cloning is useful for branching simulations or saving a checkpoint before a destructive measurement.
